@@ -77,6 +77,12 @@ import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.CylinderNode
+import kotlinx.coroutines.joinAll
+import kotlin.random.Random
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+val mutex = Mutex()
 
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 data class DistanceAndPriority(var distance: Float = 0f, var priority: Long = 7, var indexOfChildNodes: Int = 0)
@@ -120,6 +126,9 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
         var t = 0.2
 
         var debugNodes by remember {mutableStateOf(listOf<Node>())} // デバッグ用ノード
+
+        var predictedNodeIndex1 by remember {mutableStateOf<Int>(0)}
+        var predictedNodeIndex2 by remember {mutableStateOf<Int>(0)}
 
         // Timer()のインスタンス生成
         val timer = Timer()
@@ -179,52 +188,33 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
             // 各Quic.fetchを非同期で実行
             if (planeDetected && centerPose != null && session != null) {
                 lastAngle = Triple(
-                    cameraNode.rotation.x,
-                    cameraNode.rotation.y,
-                    cameraNode.rotation.z
+                    cameraNode.worldRotation.x,
+                    cameraNode.worldRotation.y,
+                    cameraNode.worldRotation.z
+                )
+                lastPosition = Triple(
+                    cameraNode.worldPosition.x,
+                    cameraNode.worldPosition.y,
+                    cameraNode.worldPosition.z
                 )
                 timer.scheduleAtFixedRate(task, delay, Long)
 
                 coroutineScope{
                     launch {
-                        poses = listOf(
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.0f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.1f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - 1.0f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 0.3f, it.ty(), it.tz() - 0.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.3f, it.ty(), it.tz() - 0.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.6f, it.ty(), it.tz() - 0.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.6f, it.ty(), it.tz() - 0.6f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.3f, it.ty(), it.tz() - 0.6f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.9f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.3f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() + 0.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() + 1.0f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.2f, it.ty(), it.tz() + 0.2f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.4f, it.ty(), it.tz() + 0.4f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.6f, it.ty(), it.tz() + 0.6f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.8f, it.ty(), it.tz() + 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.0f, it.ty(), it.tz() + 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.2f, it.ty(), it.tz() + 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.8f, it.ty(), it.tz() + 1.0f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.8f, it.ty(), it.tz() + 1.2f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.3f, it.ty(), it.tz() + 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.8f, it.ty(), it.tz() + 0.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.5f, it.ty(), it.tz() + 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.3f, it.ty(), it.tz() + 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.1f, it.ty(), it.tz() + 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.8f, it.ty(), it.tz() - 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.8f, it.ty(), it.tz() - 0.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 0.5f, it.ty(), it.tz() - 0.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                        )
-                        poses.forEachIndexed{ index, pose ->
+                        // 擬似的な平面上にオブジェクトを配置
+                        val planeSize = 4f // 擬似的な平面のサイズ（メートル）
+                        poses = List(4) { index ->
+                            val x = (index * 0.2f + 0.4f)
+                            val z = (Random.nextFloat() - 1.5f) * planeSize
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
+                        }
+
+                        val jobs = poses.mapIndexed { index, pose ->
                             launch {
                                 fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, pose, session, 7, distancesAndPriority)
                             }
                         }
-
+                        jobs.joinAll()
                     }
                 }
             }
@@ -253,21 +243,27 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
                 trackingFailureReason = it
             },
             onSessionUpdated = { updatedSession, updatedFrame ->  // ARCoreシステムの状態の更新。
-                if (childNodes.isEmpty()) {
-                    // 平面が検出されたらplaneDetectedをtrueにして、LaunchedEffect内の処理を実行
-                    if (updatedFrame.getUpdatedPlanes()
-                            .firstOrNull() !== null
-                    ) {
-                        centerPose = updatedFrame.getUpdatedPlanes()
-                            .firstOrNull() { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }?.centerPose
-                        session = updatedSession
-                        planeDetected = true
-                    }
-                }
-
                 // カメラの位置を取得
                 val cameraPose = updatedFrame.camera.pose
-                Log.d("cameraRotation", cameraNode.rotation.toString())
+                //Log.d("cameraRotation", cameraNode.rotation.toString())
+
+                // カメラの前方向きのベクトルを取得
+                val forwardVector = cameraPose.zAxis
+
+                // カメラから任意の距離（例：2メートル）前方の位置を計算
+                val distanceFromCamera = -2f
+                val pseudoPlaneCenter = cameraPose.compose(Pose.makeTranslation(
+                    forwardVector[0] * distanceFromCamera,
+                    forwardVector[1],
+                    forwardVector[2] * distanceFromCamera
+                ))
+
+                if (childNodes.isEmpty()) {
+                    // 擬似的な平面が作成されたらplaneDetectedをtrueにして、LaunchedEffect内の処理を実行
+                    centerPose = pseudoPlaneCenter
+                    session = updatedSession
+                    planeDetected = true
+                }
 
                 // 各オブジェクトとの距離を計算
                 if (!childNodes.isEmpty()) {
@@ -309,16 +305,7 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
 
                 // 視線予測デバッグ用
                 // onSessionUpdatedの中で以下のコードを追加
-                val currentPositionNode = SphereNode(
-                    engine = engine,
-                    radius = 0.05f,
-                    materialInstance = materialLoader.createColorInstance(Color.Blue)
-                )
-                currentPositionNode.worldPosition = Position(
-                    cameraPose.translation[0],
-                    cameraPose.translation[1],
-                    cameraPose.translation[2]
-                )
+                Log.d("pseudoPlaneCenter", pseudoPlaneCenter.toString())
 
                 val predictedPositionNode = SphereNode(
                     engine = engine,
@@ -398,12 +385,41 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
 //                    Color.Green
 //                )
 
-                debugNodes = listOf(
-                    currentPositionNode,
-                    predictedPositionNode,
-                )
+//                debugNodes = listOf(
+//                    currentPositionNode,
+//                    predictedPositionNode,
+//                )
 
-                childNodes +=  debugNodes
+                Log.d("childd", childNodes.size.toString())
+                if (childNodes.size == 4) {
+                    val currentPositionNode = SphereNode(
+                        engine = engine,
+                        radius = 0.05f,
+                        materialInstance = materialLoader.createColorInstance(Color.Blue)
+                    )
+                    currentPositionNode.worldPosition = Position(
+                        pseudoPlaneCenter.tx(),
+                        pseudoPlaneCenter.ty(),
+                        pseudoPlaneCenter.tz()
+                    )
+
+                    childNodes += currentPositionNode
+                    predictedNodeIndex1 = childNodes.size - 1
+//                    childNodes += predictedPositionNode
+//                    predictedNodeIndex1 = childNodes.size - 1
+                } else if (childNodes.size >= 5) {
+                    (childNodes[predictedNodeIndex1] as? SphereNode)?.worldPosition = Position(
+                        pseudoPlaneCenter.tx(),
+                        pseudoPlaneCenter.ty(),
+                        pseudoPlaneCenter.tz()
+                    )
+//                    childNodes[predictedNodeIndex2].destroy()
+//                    childNodes[predictedNodeIndex2] = predictedPositionNode
+                }
+
+
+//
+//                childNodes +=  debugNodes
             },
         )
     }
@@ -425,7 +441,9 @@ suspend fun fetchAndDisplayObject(
         buffer?.let {
             val anchor = createAnchor(pose!!, session!!)
             val modelInstance = mutableListOf<ModelInstance>()
-            addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, distancesAndPriority)
+            mutex.withLock {
+                addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, distancesAndPriority)
+            }
         }
     } catch (e: Exception) {
         Log.d("fetch", "Error fetching or displaying object: ${e.message}")
@@ -514,5 +532,6 @@ fun getObject(name: String, priorityNumber: Long): Buffer {
     //val byteArray = Quic.httP2Fetch(name)
 
     val buffer = ByteBuffer.wrap(byteArray)
+
     return buffer
 }
