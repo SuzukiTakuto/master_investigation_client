@@ -58,31 +58,31 @@ import android.util.Log
 import quic.Quic
 
 class MainActivity : ComponentActivity(),  SensorEventListener{
-    private var initialAngle = Triple(0f, 0f, 0f)
-    private var currentAngle = Triple(0f, 0f, 0f)
-    private var isInitialized = false
-
-    private val _accelerometerSensorData = mutableStateOf(Triple(0f, 0f, 0f))
-    private val _gyroscopeSensorData = mutableStateOf(Triple(0f, 0f, 0f))
-
-    private lateinit var sensorManager: SensorManager
-    private var accelerometer: Sensor? = null
-    private var gyroscope: Sensor? = null
-    private var magnetic: Sensor? = null
+//    private var initialAngle = Triple(0f, 0f, 0f)
+//    private var currentAngle = Triple(0f, 0f, 0f)
+//    private var isInitialized = false
+//
+//    private val _accelerometerSensorData = mutableStateOf(Triple(0f, 0f, 0f))
+//    private val _gyroscopeSensorData = mutableStateOf(Triple(0f, 0f, 0f))
+//
+//    private lateinit var sensorManager: SensorManager
+//    private var accelerometer: Sensor? = null
+//    private var gyroscope: Sensor? = null
+//    private var magnetic: Sensor? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-        magnetic = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+//        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+//        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+//        gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+//        magnetic = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
         setContent {
             Quic.connect()
             Quic_ar_clientTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    HomeScreen(_accelerometerSensorData.value)
+                    HomeScreen()
                 }
             }
         }
@@ -90,57 +90,57 @@ class MainActivity : ComponentActivity(),  SensorEventListener{
 
     override fun onResume() {
         super.onResume()
-        accelerometer?.also { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-        gyroscope?.also { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-        magnetic?.also { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-        }
+//        accelerometer?.also { sensor ->
+//            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+//        }
+//        gyroscope?.also { sensor ->
+//            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+//        }
+//        magnetic?.also { sensor ->
+//            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+//        }
     }
 
     override fun onPause() {
         super.onPause()
-        sensorManager.unregisterListener(this)
+        //sensorManager.unregisterListener(this)
     }
 
-    private val THRESHOLD = 0.1f
-    private var lastAccelerometerValue = Triple(0f, 0f, 0f)
-    private val GYRO_THRESHOLD = 0.05f
-    private var lastGyroValue = Triple(0f, 0f, 0f)
-    private var lastGyroTime: Long = 0 // 角速度を微分し角加速度を得るために使用
-    private var angularAcceleration = Triple(0f, 0f, 0f)
-
-    var gravity: FloatArray? = null
-    var geomagnetic: FloatArray? = null
-    var rotationMatrix = FloatArray(9)
-    var attitude = FloatArray(3)
-    var RAD2DEG = 180/Math.PI;
-
+//    private val THRESHOLD = 0.1f
+//    private var lastAccelerometerValue = Triple(0f, 0f, 0f)
+//    private val GYRO_THRESHOLD = 0.05f
+//    private var lastGyroValue = Triple(0f, 0f, 0f)
+//    private var lastGyroTime: Long = 0 // 角速度を微分し角加速度を得るために使用
+//    private var angularAcceleration = Triple(0f, 0f, 0f)
+//
+//    var gravity: FloatArray? = null
+//    var geomagnetic: FloatArray? = null
+//    var rotationMatrix = FloatArray(9)
+//    var attitude = FloatArray(3)
+//    var RAD2DEG = 180/Math.PI;
+//
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            gravity = floatArrayOf(event.values[0], event.values[1], event.values[2])
-        } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
-            geomagnetic = floatArrayOf(event.values[0], event.values[1], event.values[2])
-        }
-
-        if(geomagnetic != null && gravity != null){
-            SensorManager.getRotationMatrix(
-                rotationMatrix, null,
-                gravity, geomagnetic);
-
-            SensorManager.getOrientation(
-                rotationMatrix,
-                attitude);
-
-            var angle = Triple((attitude[0] * RAD2DEG), (attitude[1] * RAD2DEG), (attitude[2] * RAD2DEG))
-            Log.d("angle" , angle.toString())
-        }
+//        if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+//            gravity = floatArrayOf(event.values[0], event.values[1], event.values[2])
+//        } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
+//            geomagnetic = floatArrayOf(event.values[0], event.values[1], event.values[2])
+//        }
+//
+//        if(geomagnetic != null && gravity != null){
+//            SensorManager.getRotationMatrix(
+//                rotationMatrix, null,
+//                gravity, geomagnetic);
+//
+//            SensorManager.getOrientation(
+//                rotationMatrix,
+//                attitude);
+//
+//            var angle = Triple((attitude[0] * RAD2DEG), (attitude[1] * RAD2DEG), (attitude[2] * RAD2DEG))
+//            Log.d("angle" , angle.toString())
+//        }
     }
-
+//
     override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
-
+//
     }
 }
