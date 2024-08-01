@@ -1,40 +1,20 @@
 package com.example.quic_ar_client.screens
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.quic_ar_client.ui.theme.Quic_ar_clientTheme
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
-import com.google.ar.core.Frame
-import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARScene
-import io.github.sceneview.ar.arcore.createAnchorOrNull
-import io.github.sceneview.ar.arcore.getUpdatedPlanes
-import io.github.sceneview.ar.arcore.isValid
-import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.loaders.MaterialLoader
@@ -47,36 +27,25 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNodes
-import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
 import android.util.Log
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.LaunchedEffect
 import com.google.ar.core.Session
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import quic.Quic
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import java.lang.Exception
 import java.nio.Buffer
 import java.nio.ByteBuffer
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import dev.romainguy.kotlin.math.x
 import io.github.sceneview.node.Node
 import kotlin.math.sqrt
-import java.util.*
 import java.util.Timer
 import kotlin.concurrent.timerTask
 import io.github.sceneview.node.SphereNode
-import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Rotation
-import io.github.sceneview.node.CylinderNode
 import kotlinx.coroutines.joinAll
 import kotlin.random.Random
 import kotlinx.coroutines.sync.Mutex
@@ -90,8 +59,8 @@ data class DistanceAndPriority(var distance: Float = 0f, var priority: Long = 7,
 private const val kMaxModelInstances = 10
 
 @Composable
-fun ARSample(sensorData: Triple<Float, Float, Float>) {
-    var distancesAndPriority by remember { mutableStateOf(mutableMapOf<String, DistanceAndPriority>()) }
+fun ARSample() {
+    val distancesAndPriority by remember { mutableStateOf(mutableMapOf<String, DistanceAndPriority>()) }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -107,6 +76,7 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
         var planeRenderer by remember { mutableStateOf(true) } // 平面検出するかどうか？
 
         var centerPose by remember {mutableStateOf<Pose?>(null)}
+        var globalCameraPose by remember {mutableStateOf<Pose?>(null)}
         var session by remember { mutableStateOf<Session?>(null) }
 
         var trackingFailureReason by remember {
@@ -133,6 +103,8 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
         // Timer()のインスタンス生成
         val timer = Timer()
         val task = timerTask {
+            val localCameraPose = globalCameraPose ?: return@timerTask
+
             // cameraNodeの角度と経過時間から角度を予想
             currentAngle = Triple(
                 cameraNode.worldRotation.x,
@@ -157,10 +129,12 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
             lastAngle = currentAngle
 
             //cameraNodeの位置と経過時間から位置を予想
+            val fixedDistance = 2f
+            val cameraForward = localCameraPose.zAxis
             currentPosition = Triple(
-                cameraNode.worldPosition.x,
-                cameraNode.worldPosition.y,
-                cameraNode.worldPosition.z
+                localCameraPose.tx() - cameraForward[0] * fixedDistance,
+                localCameraPose!!.ty() - cameraForward[1] * fixedDistance,
+                localCameraPose!!.tz() - cameraForward[2] * fixedDistance
             )
             var positionSpeed = Triple(
                 (currentPosition.first - lastPosition.first) / t,
@@ -211,6 +185,7 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
 
                         val jobs = poses.mapIndexed { index, pose ->
                             launch {
+                                Log.d("fetch", "sdfsdfsdf")
                                 fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, pose, session, 7, distancesAndPriority)
                             }
                         }
@@ -245,6 +220,7 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
             onSessionUpdated = { updatedSession, updatedFrame ->  // ARCoreシステムの状態の更新。
                 // カメラの位置を取得
                 val cameraPose = updatedFrame.camera.pose
+                globalCameraPose = updatedFrame.camera.pose
                 //Log.d("cameraRotation", cameraNode.rotation.toString())
 
                 // カメラの前方向きのベクトルを取得
@@ -305,18 +281,7 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
 
                 // 視線予測デバッグ用
                 // onSessionUpdatedの中で以下のコードを追加
-                Log.d("pseudoPlaneCenter", pseudoPlaneCenter.toString())
 
-                val predictedPositionNode = SphereNode(
-                    engine = engine,
-                    radius = 0.05f,
-                    materialInstance = materialLoader.createColorInstance(Color.Red)
-                )
-                predictedPositionNode.worldPosition = Position(
-                    predictedPosition.first,
-                    predictedPosition.second,
-                    predictedPosition.third
-                )
 
                 fun Position.normalized(): Position {
                     val length = sqrt(x * x + y * y + z * z)
@@ -391,30 +356,47 @@ fun ARSample(sensorData: Triple<Float, Float, Float>) {
 //                )
 
                 Log.d("childd", childNodes.size.toString())
-                if (childNodes.size == 4) {
+                val fixedDistance = 2f
+                val cameraForward = cameraPose.zAxis
+                if (childNodes.size == 0) {
                     val currentPositionNode = SphereNode(
                         engine = engine,
                         radius = 0.05f,
                         materialInstance = materialLoader.createColorInstance(Color.Blue)
                     )
                     currentPositionNode.worldPosition = Position(
-                        pseudoPlaneCenter.tx(),
-                        pseudoPlaneCenter.ty(),
-                        pseudoPlaneCenter.tz()
+                        cameraPose.tx() - cameraForward[0] * fixedDistance,
+                        cameraPose.ty() - cameraForward[1] * fixedDistance,
+                        cameraPose.tz() - cameraForward[2] * fixedDistance
+                    )
+
+                    val predictedPositionNode = SphereNode(
+                        engine = engine,
+                        radius = 0.05f,
+                        materialInstance = materialLoader.createColorInstance(Color.Red)
+                    )
+                    predictedPositionNode.worldPosition = Position(
+                        predictedPosition.first,
+                        predictedPosition.second,
+                        predictedPosition.third
                     )
 
                     childNodes += currentPositionNode
                     predictedNodeIndex1 = childNodes.size - 1
-//                    childNodes += predictedPositionNode
-//                    predictedNodeIndex1 = childNodes.size - 1
-                } else if (childNodes.size >= 5) {
+                    childNodes += predictedPositionNode
+                    predictedNodeIndex2 = childNodes.size - 1
+                } else if (childNodes.size >= 2) {
                     (childNodes[predictedNodeIndex1] as? SphereNode)?.worldPosition = Position(
-                        pseudoPlaneCenter.tx(),
-                        pseudoPlaneCenter.ty(),
-                        pseudoPlaneCenter.tz()
+                        cameraPose.tx() - cameraForward[0] * fixedDistance,
+                        cameraPose.ty() - cameraForward[1] * fixedDistance,
+                        cameraPose.tz() - cameraForward[2] * fixedDistance
                     )
-//                    childNodes[predictedNodeIndex2].destroy()
-//                    childNodes[predictedNodeIndex2] = predictedPositionNode
+//
+                    (childNodes[predictedNodeIndex2] as? SphereNode)?.worldPosition = Position(
+                        predictedPosition.first,
+                        predictedPosition.second,
+                        predictedPosition.third
+                    )
                 }
 
 
@@ -440,18 +422,33 @@ suspend fun fetchAndDisplayObject(
         val buffer = withContext(Dispatchers.IO) { getObject(name, priorityNumber) }
         buffer?.let {
             val anchor = createAnchor(pose!!, session!!)
+            if (anchor == null) {
+                Log.d("fetch", "anchor null")
+            }
             val modelInstance = mutableListOf<ModelInstance>()
             mutex.withLock {
                 addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, distancesAndPriority)
+                Log.d("buffer_aaa", buffer.toString())
             }
         }
     } catch (e: Exception) {
         Log.d("fetch", "Error fetching or displaying object: ${e.message}")
+        e.printStackTrace()
     }
 }
 
 fun createAnchor(pose: Pose, session: Session): Anchor {
-    return session.createAnchor(pose)
+    try{
+        val anchor = session.createAnchor(pose)
+        Log.d("fetch", "anchor : ${anchor}")
+        return anchor
+    } catch (e: Exception) {
+        Log.d("fetch", "Error in createAnchor: ${e.message}")
+        Log.d("fetch", "Session: ${session}")
+        Log.d("fetch", "Pose: $pose")
+        e.printStackTrace()
+        throw e
+    }
 }
 
 fun addNodes(
@@ -465,19 +462,25 @@ fun addNodes(
     name: String,
     distancesAndPriority: MutableMap<String, DistanceAndPriority>
 ) {
-    val node = createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer)
+    try{
+        val node =
+            createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer)
 
-    // 新しく追加したオブジェクトのインデックスを記録する
-    if (!distancesAndPriority.containsKey(name)) {
-        distancesAndPriority[name] = DistanceAndPriority()
-    }
+        // 新しく追加したオブジェクトのインデックスを記録する
+        if (!distancesAndPriority.containsKey(name)) {
+            distancesAndPriority[name] = DistanceAndPriority()
+        }
 
-    if (childNodes.size != 4) { // 最初のフェッチの時
-        childNodes += node
-        distancesAndPriority[name]?.indexOfChildNodes = childNodes.size - 1
-    } else { // 更新のフェッチの時
-        var index = distancesAndPriority[name]?.indexOfChildNodes
-        childNodes[index!!] = node
+        if (childNodes.size != 4) { // 最初のフェッチの時
+            childNodes += node
+            distancesAndPriority[name]?.indexOfChildNodes = childNodes.size - 1
+        } else { // 更新のフェッチの時
+            var index = distancesAndPriority[name]?.indexOfChildNodes
+            childNodes[index!!] = node
+        }
+    } catch (e: Exception) {
+        Log.d("fetch", "Error in addNodes: ${e.message}")
+        e.printStackTrace()
     }
 }
 
@@ -489,42 +492,51 @@ fun createAnchorNode(
     anchor: Anchor,
     buffer: Buffer?,
 ): AnchorNode {
-    val anchorNode = AnchorNode(engine = engine, anchor = anchor)
-    val modelNode = ModelNode(
-        modelInstance = modelInstances.apply {
-            if (isEmpty()) {
-                try {
-                    Log.d("anchor", modelInstances.toString())
-                    this += modelLoader.createInstancedModel(buffer = buffer!!, count = kMaxModelInstances)
-                } catch (e: Exception) {
+    try{
+        val anchorNode = AnchorNode(engine = engine, anchor = anchor)
+        val modelNode = ModelNode(
+            modelInstance = modelInstances.apply {
+                if (isEmpty()) {
+                    try {
+                        Log.d("anchor", modelInstances.toString())
+                        this += modelLoader.createInstancedModel(
+                            buffer = buffer!!,
+                            count = kMaxModelInstances
+                        )
+                    } catch (e: Exception) {
 
-                    println("Error creating instanced model: ${e.message}")
+                        println("Error creating instanced model: ${e.message}")
+                    }
                 }
-            }
-        }.removeLast(),
-        // Scale to fit in a 0.5 meters cube
-        scaleToUnits = 0.5f
-    ).apply {
-        // Model Node needs to be editable for independent rotation from the anchor rotation
-        isEditable = true
-    }
-    val boundingBoxNode = CubeNode(
-        engine,
-        size = modelNode.extents,
-        center = modelNode.center,
-        materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
-    ).apply {
-        isVisible = false
-    }
-    modelNode.addChildNode(boundingBoxNode)
-    anchorNode.addChildNode(modelNode)
-
-    listOf(modelNode, anchorNode).forEach {
-        it.onEditingChanged = { editingTransforms ->
-            boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
+            }.removeLast(),
+            // Scale to fit in a 0.5 meters cube
+            scaleToUnits = 0.5f
+        ).apply {
+            // Model Node needs to be editable for independent rotation from the anchor rotation
+            isEditable = true
         }
+        val boundingBoxNode = CubeNode(
+            engine,
+            size = modelNode.extents,
+            center = modelNode.center,
+            materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
+        ).apply {
+            isVisible = false
+        }
+        modelNode.addChildNode(boundingBoxNode)
+        anchorNode.addChildNode(modelNode)
+
+        listOf(modelNode, anchorNode).forEach {
+            it.onEditingChanged = { editingTransforms ->
+                boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
+            }
+        }
+        return anchorNode
+    } catch (e: Exception) {
+        Log.d("fetch", "Error in AnchorNode: ${e.message}")
+        e.printStackTrace()
+        throw e
     }
-    return anchorNode
 }
 
 fun getObject(name: String, priorityNumber: Long): Buffer {

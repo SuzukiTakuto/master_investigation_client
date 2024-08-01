@@ -5,6 +5,6 @@ import androidx.compose.runtime.Composable
 import quic.Quic
 
 @Composable
-fun HomeScreen(sensorData: Triple<Float, Float, Float>) {
-    ARSample(sensorData)
+fun HomeScreen() {
+    ARSample()
 }
