@@ -77,12 +77,13 @@ import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.CylinderNode
+import kotlin.math.acos
 
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 data class DistanceAndPriority(var distance: Float = 0f, var priority: Long = 7, var indexOfChildNodes: Int = 0)
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 10
+private const val numberOfObject = 4
 
 @Composable
 fun ARSample() {
@@ -130,15 +131,86 @@ fun ARSample() {
             val priority: Long
         )
 
-        fun getPriorityOfPredictedObject(markerString: String, distance: Float): Long {
-            if (distance < 1.0) {
-                if (distancesAndPriority[markerString]!!.priority <= 1) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = 1
-                return 1
-            } else if (distance < 1.5) {
-                if (distancesAndPriority[markerString]!!.priority <= 3) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = 3
-                return 3
+        // カメラの視野角を定義（例：水平60度、垂直45度）
+        val HORIZONTAL_FOV = 55f
+        val VERTICAL_FOV = 35f
+
+        // オブジェクトが視野内にあるかどうかを判断する関数
+        fun isInFieldOfView(objectPose: Pose): Boolean {
+            val cameraPose = globalCameraPose ?: return false
+
+            val cameraToObject = floatArrayOf(
+                objectPose.tx() - cameraPose.tx(),
+                objectPose.ty() - cameraPose.ty(),
+                objectPose.tz() - cameraPose.tz()
+            )
+
+            // カメラの前方ベクトルを取得
+            val cameraForward = cameraPose.zAxis
+
+            // 各ベクトルの大きさ計算
+            val cameraToObjectVerticalLength = sqrt(cameraToObject[2] * cameraToObject[2] + cameraToObject[1] * cameraToObject[1])
+            val cameraToObjectHorizontalLength = sqrt(cameraToObject[0] * cameraToObject[0] + cameraToObject[2] * cameraToObject[2])
+
+            val zAxisVerticalLength = sqrt(cameraForward[2] * cameraForward[2] + cameraForward[1] * cameraForward[1])
+            val zAxisHorizontalLength = sqrt(cameraForward[0] * cameraForward[0] + cameraForward[2] * cameraForward[2])
+
+            // 内積計算
+            val dotOfVertical = cameraForward[1] * cameraToObject[1] + cameraForward[2] * cameraToObject[2]
+            val dotOfHorizontal = cameraForward[0] * cameraToObject[0] + cameraForward[2] * cameraToObject[2]
+
+            // cosθ計算
+            val cosOfVertical = dotOfVertical / (cameraToObjectVerticalLength * zAxisVerticalLength)
+            val cosOfHorizontal = dotOfHorizontal / (cameraToObjectHorizontalLength * zAxisHorizontalLength)
+
+            // 逆余弦関数(180°大きい値が出るからその分引く)
+            val verticalAngle = 180 - Math.toDegrees(acos(cosOfVertical).toDouble())
+            val horizontalAngle = 180 - Math.toDegrees(acos(cosOfHorizontal).toDouble())
+
+            // 視野角の半分と比較
+            return horizontalAngle <= HORIZONTAL_FOV / 2 && verticalAngle <= VERTICAL_FOV / 2
+        }
+
+        fun getPriorityOfObject(markerString: String, distance: Float, objectPose: Pose): Long {
+            if (!isInFieldOfView(objectPose)) {
+                return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
+            }
+
+            if (distance < 1.5) {
+                val priority = 1L
+                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                distancesAndPriority[markerString]!!.priority = priority
+                return priority
+            } else if (distance < 1.8) {
+                val priority = 2L
+                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                distancesAndPriority[markerString]!!.priority = priority
+                return priority
+            } else if (distance < 2.1) {
+                val priority = 3L
+                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                distancesAndPriority[markerString]!!.priority = priority
+                return priority
+            } else if (distance < 2.3) {
+                val priority = 4L
+                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                distancesAndPriority[markerString]!!.priority = priority
+                return priority
+            } else if (distance < 2.6) {
+                val priority = 5L
+                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                distancesAndPriority[markerString]!!.priority = priority
+                return priority
+            } else if (distance < 2.9) {
+                val priority = 6L
+                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                distancesAndPriority[markerString]!!.priority = priority
+                return priority
+            } else if (distance < 3.1) {
+                val priority = 7L
+                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                distancesAndPriority[markerString]!!.priority = priority
+                return priority
             } else {
                 return 0
             }
@@ -154,7 +226,7 @@ fun ARSample() {
                 val distance = sqrt(x * x + y * y + z * z)
                 val markerString = "marker${index + 1}"
                 if (distance <= allowableRange) {
-                    val priority = getPriorityOfPredictedObject(markerString, distance)
+                    val priority = getPriorityOfObject(markerString, distance, pose)
                     val objectInfo = PredictedObjectInfo(markerString, pose, priority)
                     predictedObjectInfo.add(objectInfo)
                 }
@@ -168,7 +240,7 @@ fun ARSample() {
             predictedObjectInfo.forEach{ (markerString, pose, priority) ->
                 if (priority == 0L) return
                 GlobalScope.launch(Dispatchers.Main)  {
-                    fetchAndDisplayObject(markerString, childNodes, engine, modelLoader, materialLoader, pose, session, 3, distancesAndPriority)
+                    //fetchAndDisplayObject(markerString, childNodes, engine, modelLoader, materialLoader, pose, session, priority, distancesAndPriority)
                 }
             }
         }
@@ -238,7 +310,11 @@ fun ARSample() {
 
                         poses.forEachIndexed { index, pose ->
                             launch {
-                                fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, pose, session, 7, distancesAndPriority)
+                                // 新しく追加したオブジェクトのインデックスを記録する
+                                distancesAndPriority["marker${index + 1}"] = DistanceAndPriority()
+                                if (isInFieldOfView(pose)) {
+                                    fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, pose, session, 7, distancesAndPriority)
+                                }
                             }
                         }
                     }
@@ -297,10 +373,11 @@ fun ARSample() {
                             distancesAndPriority[key]?.distance = distance
 
                             //一定の距離以内になったら
-                            val priority = getPriorityOfPredictedObject(key, distance)
+                            val priority = getPriorityOfObject(key, distance, pose)
+                            Log.d("pose!!!!", pose.toString())
                             if (priority != 0L) {
                                 GlobalScope.launch(Dispatchers.Main)  {
-                                    fetchAndDisplayObject(key, childNodes, engine, modelLoader, materialLoader, pose, session, 3, distancesAndPriority)
+                                    fetchAndDisplayObject(key, childNodes, engine, modelLoader, materialLoader, pose, session, priority, distancesAndPriority)
                                 }
                             }
                         } catch (e: Exception) {
@@ -324,7 +401,6 @@ fun ARSample() {
                     )
                 }
 
-                Log.d("childd", childNodes.size.toString())
                 val fixedDistance = 2f
                 val cameraForward = cameraPose.zAxis
                 if (childNodes.size == numberOfObject) {
@@ -387,16 +463,10 @@ suspend fun fetchAndDisplayObject(
         val buffer = withContext(Dispatchers.IO) { getObject(name, priorityNumber) }
         buffer?.let {
             val anchor = createAnchor(pose!!, session!!)
-            if (anchor == null) {
-                Log.d("fetch", "anchor null")
-            }
             val modelInstance = mutableListOf<ModelInstance>()
             addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, distancesAndPriority)
-            Log.d("buffer_aaa", buffer.toString())
-
         }
     } catch (e: Exception) {
-        Log.d("fetch", "Error fetching or displaying object: ${e.message}")
         e.printStackTrace()
     }
 }
@@ -404,12 +474,8 @@ suspend fun fetchAndDisplayObject(
 fun createAnchor(pose: Pose, session: Session): Anchor {
     try{
         val anchor = session.createAnchor(pose)
-        Log.d("fetch", "anchor : ${anchor}")
         return anchor
     } catch (e: Exception) {
-        Log.d("fetch", "Error in createAnchor: ${e.message}")
-        Log.d("fetch", "Session: ${session}")
-        Log.d("fetch", "Pose: $pose")
         e.printStackTrace()
         throw e
     }
@@ -430,11 +496,6 @@ fun addNodes(
         val node =
             createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer)
 
-        // 新しく追加したオブジェクトのインデックスを記録する
-        if (!distancesAndPriority.containsKey(name)) {
-            distancesAndPriority[name] = DistanceAndPriority()
-        }
-
         if (childNodes.size != numberOfObject + 2) { // 最初のフェッチの時
             childNodes += node
             distancesAndPriority[name]?.indexOfChildNodes = childNodes.size - 1
@@ -444,7 +505,6 @@ fun addNodes(
             childNodes[index!!] = node
         }
     } catch (e: Exception) {
-        Log.d("fetch", "Error in addNodes: ${e.message}")
         e.printStackTrace()
     }
 }
@@ -463,7 +523,6 @@ fun createAnchorNode(
             modelInstance = modelInstances.apply {
                 if (isEmpty()) {
                     try {
-                        Log.d("anchor", modelInstances.toString())
                         this += modelLoader.createInstancedModel(
                             buffer = buffer!!,
                             count = kMaxModelInstances
@@ -498,7 +557,6 @@ fun createAnchorNode(
         }
         return anchorNode
     } catch (e: Exception) {
-        Log.d("fetch", "Error in AnchorNode: ${e.message}")
         e.printStackTrace()
         throw e
     }
