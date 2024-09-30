@@ -66,6 +66,8 @@ import java.lang.Exception
 import java.nio.Buffer
 import java.nio.ByteBuffer
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import dev.romainguy.kotlin.math.PI
+import dev.romainguy.kotlin.math.all
 import dev.romainguy.kotlin.math.x
 import io.github.sceneview.node.Node
 import kotlin.math.sqrt
@@ -78,16 +80,28 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.CylinderNode
 import kotlin.math.acos
+import kotlin.math.tan
 
-// distance: オブジェクトとユーザの距離。priority: 現在の優先度。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
-data class DistanceAndPriority(var distance: Float = 0f, var priority: Long = 7, var indexOfChildNodes: Int = 0)
+// distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 4
+private const val numberOfObject = 2
+
+// カメラの視野角を定義（例：水平60度、垂直45度）
+private const val HORIZONTAL_FOV = 56f
+private const val HORIZONTAL_FOV_RAD = HORIZONTAL_FOV * PI / 180
+private const val VERTICAL_FOV = 30f
+
+// スクリーンサイズ
+private const val screenWidth = 2560
+private const val screenHeight = 1600
+
+// ターゲットSSE
+private const val targetSSE = 1.5f
 
 @Composable
 fun ARSample() {
-    val distancesAndPriority by remember { mutableStateOf(mutableMapOf<String, DistanceAndPriority>()) }
+    val objectInfoList by remember { mutableStateOf(mutableMapOf<String, ObjectInfo>()) }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -118,22 +132,191 @@ fun ARSample() {
         var currentPosition by remember {mutableStateOf(Triple(0f, 0f, 0f))}
         var predictedPosition by remember {mutableStateOf(Triple(0f, 0f, 0f))}
         var lastPosition by remember { mutableStateOf(Triple(0f, 0f, 0f)) }
-        var t = 0.5
-
-        var debugNodes by remember {mutableStateOf(listOf<Node>())} // デバッグ用ノード
+        var t = 2.5
 
         var predictedNodeIndex1 by remember {mutableStateOf<Int>(0)}
         var predictedNodeIndex2 by remember {mutableStateOf<Int>(0)}
+
+
+        // オブジェクトのフェッチ処理
+        // ===============================================================================
+        // ===============================================================================
+        // ===============================================================================
+        // ===============================================================================
+        // オブジェクトグループの各LODのダウンロード時間を推定
+        fun calculateDownloadingTimeOfLOD(fileSize: Long, downloadingTime: Float, objectInfo: ObjectInfo) {
+            objectInfo.lodLevelGroup.forEach {
+                val calculatedEstimateDownloadingTime = (downloadingTime * it.fileSize) / fileSize
+                it.estimateDownloadingTime = calculatedEstimateDownloadingTime
+            }
+        }
+
+        fun getObject(name: String, priorityNumber: Long): Pair<Buffer, Float> {
+            val result = Quic.fetch(name, priorityNumber)
+            var byteArray = result.receiveData
+            var downloadingTime = result.downloadingTime.toFloat()
+            Log.d("byteeee", downloadingTime.toString())
+            //val byteArray = Quic.httP2Fetch(name)
+
+            val buffer = ByteBuffer.wrap(byteArray)
+
+            return Pair(buffer, downloadingTime)
+        }
+
+        fun createAnchorNode(
+            engine: Engine,
+            modelLoader: ModelLoader,
+            materialLoader: MaterialLoader,
+            modelInstances: MutableList<ModelInstance>,
+            anchor: Anchor,
+            buffer: Buffer?,
+        ): AnchorNode {
+            try{
+                val anchorNode = AnchorNode(engine = engine, anchor = anchor)
+                val modelNode = ModelNode(
+                    modelInstance = modelInstances.apply {
+                        if (isEmpty()) {
+                            try {
+                                this += modelLoader.createInstancedModel(
+                                    buffer = buffer!!,
+                                    count = kMaxModelInstances
+                                )
+                            } catch (e: Exception) {
+
+                                println("Error creating instanced model: ${e.message}")
+                            }
+                        }
+                    }.removeLast(),
+                    // Scale to fit in a 0.5 meters cube
+                    scaleToUnits = 0.5f
+                ).apply {
+                    // Model Node needs to be editable for independent rotation from the anchor rotation
+                    isEditable = true
+                }
+                val boundingBoxNode = CubeNode(
+                    engine,
+                    size = modelNode.extents,
+                    center = modelNode.center,
+                    materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
+                ).apply {
+                    isVisible = false
+                }
+                modelNode.addChildNode(boundingBoxNode)
+                anchorNode.addChildNode(modelNode)
+
+                listOf(modelNode, anchorNode).forEach {
+                    it.onEditingChanged = { editingTransforms ->
+                        boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
+                    }
+                }
+                return anchorNode
+            } catch (e: Exception) {
+                e.printStackTrace()
+                throw e
+            }
+        }
+
+        fun addNodes(
+            childNodes: SnapshotStateList<Node>,
+            modelInstance: MutableList<ModelInstance>,
+            anchor: Anchor,
+            buffer: Buffer,
+            engine: Engine,
+            modelLoader: ModelLoader,
+            materialLoader: MaterialLoader,
+            name: String
+        ) {
+            try{
+                val node =
+                    createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer)
+
+                if (childNodes.size != numberOfObject + 2) { // 最初のフェッチの時
+                    childNodes += node
+                    objectInfoList[name]?.indexOfChildNodes = childNodes.size - 1
+                } else { // 更新のフェッチの時
+                    var index = objectInfoList[name]?.indexOfChildNodes
+                    childNodes[index!!].destroy()
+                    childNodes[index!!] = node
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        fun createAnchor(pose: Pose, session: Session): Anchor {
+            try{
+                val anchor = session.createAnchor(pose)
+                return anchor
+            } catch (e: Exception) {
+                e.printStackTrace()
+                throw e
+            }
+        }
+
+        suspend fun fetchAndDisplayObject(
+            name: String,
+            childNodes: SnapshotStateList<Node>,
+            engine: Engine,
+            modelLoader: ModelLoader,
+            materialLoader: MaterialLoader,
+            pose:  Pose?,
+            session: Session?,
+            priorityNumber: Long
+        ) {
+            try {
+                val (buffer, downloadingTime) = withContext(Dispatchers.IO) { getObject(name, priorityNumber) }
+                calculateDownloadingTimeOfLOD(objectInfoList[name]!!.lodLevelGroup[priorityNumber.toInt() - 1].fileSize, downloadingTime, objectInfoList[name]!!)
+                buffer?.let {
+                    val anchor = createAnchor(pose!!, session!!)
+                    val modelInstance = mutableListOf<ModelInstance>()
+                    addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        // ===============================================================================
+        // ===============================================================================
+        // ===============================================================================
+        // ===============================================================================
+
+
+
+        // SSEの計算
+        fun calculateSSE(distance: Float, geometricError: Float): Float {
+//            Log.d("calculate utility", "SSE: ${(geometricError)}, quality: ${(tan(HORIZONTAL_FOV_RAD / 2))}")
+            return (geometricError * screenWidth) / (2 * distance * (tan(HORIZONTAL_FOV_RAD / 2)))
+        }
+
+        // LODの品質貢献度の計算
+        fun calculateQuality(sse: Float): Float {
+            if (sse >= targetSSE) {
+                return 1.0f / (1.0f + (sse - targetSSE))
+            } else {
+                return 1f
+            }
+        }
+
+        // LODユーティリティの計算
+        fun calculateUtility(objectInfo: ObjectInfo, selectedLOD: Long): Float {
+            val lod = objectInfo.lodLevelGroup[selectedLOD.toInt() - 1]
+            val sse = calculateSSE(objectInfo.distance, lod.geometricError)
+            val quality = calculateQuality(sse)
+            Log.d("calculate utility", "SSE: ${sse}, Quality: ${quality} selectedLOD: ${selectedLOD}")
+//            if (selectedLOD != 0L) {
+//                Log.d("calculate utility", "SSE: ${sse}, selectedLOD: ${quality}")
+//            }
+
+            val downloadTime = lod.fileSize / lod.estimateDownloadingTime
+            return quality / (1f + downloadTime)
+        }
+
 
         data class PredictedObjectInfo(
             val markerString: String,
             val pose: Pose,
             val priority: Long
         )
-
-        // カメラの視野角を定義（例：水平60度、垂直45度）
-        val HORIZONTAL_FOV = 55f
-        val VERTICAL_FOV = 35f
 
         // オブジェクトが視野内にあるかどうかを判断する関数
         fun isInFieldOfView(objectPose: Pose): Boolean {
@@ -171,51 +354,117 @@ fun ARSample() {
             return horizontalAngle <= HORIZONTAL_FOV / 2 && verticalAngle <= VERTICAL_FOV / 2
         }
 
+        // オブジェクトの優先度を取得
         fun getPriorityOfObject(markerString: String, distance: Float, objectPose: Pose): Long {
             if (!isInFieldOfView(objectPose)) {
                 return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
             }
 
             if (distance < 1.5) {
-                val priority = 1L
-                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = priority
+                val priority = 7L
+                Log.d("allLODList", "${objectInfoList[markerString]!!.priority}")
+                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                objectInfoList[markerString]!!.priority = priority
+                Log.d("allLODList", "${distance}")
                 return priority
             } else if (distance < 1.8) {
-                val priority = 2L
-                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = priority
+                val priority = 6L
+                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.1) {
-                val priority = 3L
-                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = priority
+                val priority = 5L
+                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.3) {
                 val priority = 4L
-                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = priority
+                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.6) {
-                val priority = 5L
-                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = priority
+                val priority = 3L
+                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.9) {
-                val priority = 6L
-                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = priority
-                return priority
-            } else if (distance < 3.1) {
-                val priority = 7L
-                if (distancesAndPriority[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                distancesAndPriority[markerString]!!.priority = priority
+                val priority = 2L
+                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else {
-                return 0
+                val priority = 1L
+                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
+                objectInfoList[markerString]!!.priority = priority
+                return priority
             }
         }
 
+        data class FetchObjectInfo(
+            val index: Int,
+            val level : Long,
+            val value: Float,
+            val LODLevel: LODLevel
+        )
+
+        // フェッチするオブジェクトLODの決定
+        fun lodSelection() {
+            var remainingTime = 2f
+            var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
+            poses.forEachIndexed { index, pose ->
+                val key = "marker${index + 1}"
+                val distance = objectInfoList[key]?.distance
+
+                val priority = getPriorityOfObject(key, distance!!, pose) // そのオブジェクトの優先度を取得
+
+                if (priority != 0L) {
+                    for (i in objectInfoList[key]!!.currentLOD..7) {  // priority * utilityを計算
+                        val value = calculateUtility(objectInfoList[key]!!, i.toLong()) * priority
+                        val newFetchObjectInfo = FetchObjectInfo(
+                            index,
+                            i.toLong(),
+                            value,
+                            objectInfoList[key]!!.lodLevelGroup[i - 1]
+                        )
+                        allLODList.add(newFetchObjectInfo)
+                    }
+                }
+            }
+
+            // priority * utilityでソート
+            val sortedList = allLODList.sortedByDescending { it.value }
+
+            val objectsProcessed = mutableSetOf<Int>()
+            var scheduledFetchLOD = mutableListOf<FetchObjectInfo>()
+            sortedList.forEach {
+                Log.d("allLODList", "${it}")
+                if (it.index in objectsProcessed) return@forEach
+                if (it.LODLevel.estimateDownloadingTime <= remainingTime) {
+                    scheduledFetchLOD.add(it)
+                    remainingTime -= it.LODLevel.estimateDownloadingTime
+                    Log.d("allLODList", "残り時間: ${remainingTime}")
+                    objectsProcessed.add(it.index)
+                }
+            }
+
+            scheduledFetchLOD.forEach {
+                GlobalScope.launch(Dispatchers.Main) {
+                    fetchAndDisplayObject(
+                        "marker${it.index + 1}",
+                        childNodes,
+                        engine,
+                        modelLoader,
+                        materialLoader,
+                        poses[it.index],
+                        session,
+                        it.LODLevel.level
+                    )
+                }
+            }
+        }
+
+
+        // 予想位置の範囲内にあるオブジェクトを取得
         fun getPositionOfPredictedObjects():  List<PredictedObjectInfo>{
             var predictedObjectInfo = mutableListOf<PredictedObjectInfo>()
             val allowableRange = 0.2f // 20cm以内のものを抽出
@@ -235,12 +484,13 @@ fun ARSample() {
             return predictedObjectInfo
         }
 
+        // 予測更新対象のオブジェクトのアップデート
         fun updatePredictionObjects() {
             val predictedObjectInfo = getPositionOfPredictedObjects()
             predictedObjectInfo.forEach{ (markerString, pose, priority) ->
-                if (priority == 0L) return
+                if (priority == 0L) return@forEach
                 GlobalScope.launch(Dispatchers.Main)  {
-                    //fetchAndDisplayObject(markerString, childNodes, engine, modelLoader, materialLoader, pose, session, priority, distancesAndPriority)
+                    //fetchAndDisplayObject(markerString, childNodes, engine, modelLoader, materialLoader, pose, session, priority, objectInfo)
                 }
             }
         }
@@ -275,12 +525,14 @@ fun ARSample() {
             )
             lastPosition = currentPosition
 
-            updatePredictionObjects()
+            updatePredictionObjects() // 予測更新対象のアップデート
+
+            lodSelection() // 視野内LODのアップデート
         }
 
         // scheduleAtFixedRateメソッドの引数
         val delay: Long= 0L
-        val Long: Long = 300L
+        val Long: Long = 2500L // 2.5秒ごと
 
         // 特定の条件が変更された時に一度だけ実行する関数
         LaunchedEffect(planeDetected) {
@@ -296,7 +548,6 @@ fun ARSample() {
                     cameraNode.worldPosition.y,
                     cameraNode.worldPosition.z
                 )
-                timer.scheduleAtFixedRate(task, delay, Long)
 
                 coroutineScope{
                     launch {
@@ -311,14 +562,16 @@ fun ARSample() {
                         poses.forEachIndexed { index, pose ->
                             launch {
                                 // 新しく追加したオブジェクトのインデックスを記録する
-                                distancesAndPriority["marker${index + 1}"] = DistanceAndPriority()
+                                objectInfoList["marker${index + 1}"] = ObjectInfo()
                                 if (isInFieldOfView(pose)) {
-                                    fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, pose, session, 7, distancesAndPriority)
+                                    fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, pose, session, 1)
                                 }
                             }
                         }
                     }
                 }
+
+                timer.scheduleAtFixedRate(task, delay, Long)
             }
         }
 
@@ -362,7 +615,7 @@ fun ARSample() {
                 globalCameraPose = updatedFrame.camera.pose
 
                 // 各オブジェクトとの距離を計算
-                if (!childNodes.isEmpty()) {
+                if (planeDetected) {
                     poses.forEachIndexed{ index, pose ->
                         val key = "marker${index + 1}"
                         try {
@@ -370,35 +623,21 @@ fun ARSample() {
                             val y = cameraPose.ty() - pose.ty()
                             val z = cameraPose.tz() - pose.tz()
                             val distance = sqrt(x * x + y * y + z * z)
-                            distancesAndPriority[key]?.distance = distance
+                            objectInfoList[key]?.distance = distance
 
                             //一定の距離以内になったら
-                            val priority = getPriorityOfObject(key, distance, pose)
-                            Log.d("pose!!!!", pose.toString())
-                            if (priority != 0L) {
-                                GlobalScope.launch(Dispatchers.Main)  {
-                                    fetchAndDisplayObject(key, childNodes, engine, modelLoader, materialLoader, pose, session, priority, distancesAndPriority)
-                                }
-                            }
+//                            val priority = getPriorityOfObject(key, distance, pose)
+//                            calculateUtility(objectInfoList[key]!!, objectInfoList[key]!!.priority)
+//                            if (priority != 0L) {
+//                                GlobalScope.launch(Dispatchers.Main)  {
+//                                    fetchAndDisplayObject(key, childNodes, engine, modelLoader, materialLoader, pose, session, priority)
+//                                }
+//                            }
                         } catch (e: Exception) {
                             Log.e("ARSample", "Error processing node for $key: ${e.message}")
                         }
-                        //Log.d("distances", distancesAndPriority.toString())
+                        //Log.d("distances", objectInfo.toString())
                     }
-                }
-
-                // 視線予測デバッグ用
-                fun Position.normalized(): Position {
-                    val length = sqrt(x * x + y * y + z * z)
-                    return if (length > 0) Position(x / length, y / length, z / length) else this
-                }
-
-                fun Position.cross(other: Position): Position {
-                    return Position(
-                        y * other.z - z * other.y,
-                        z * other.x - x * other.z,
-                        x * other.y - y * other.x
-                    )
                 }
 
                 val fixedDistance = 2f
@@ -446,127 +685,4 @@ fun ARSample() {
             }
         )
     }
-}
-
-suspend fun fetchAndDisplayObject(
-    name: String,
-    childNodes: SnapshotStateList<Node>,
-    engine: Engine,
-    modelLoader: ModelLoader,
-    materialLoader: MaterialLoader,
-    pose:  Pose?,
-    session: Session?,
-    priorityNumber: Long,
-    distancesAndPriority: MutableMap<String, DistanceAndPriority>
-) {
-    try {
-        val buffer = withContext(Dispatchers.IO) { getObject(name, priorityNumber) }
-        buffer?.let {
-            val anchor = createAnchor(pose!!, session!!)
-            val modelInstance = mutableListOf<ModelInstance>()
-            addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, distancesAndPriority)
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-}
-
-fun createAnchor(pose: Pose, session: Session): Anchor {
-    try{
-        val anchor = session.createAnchor(pose)
-        return anchor
-    } catch (e: Exception) {
-        e.printStackTrace()
-        throw e
-    }
-}
-
-fun addNodes(
-    childNodes: SnapshotStateList<Node>,
-    modelInstance: MutableList<ModelInstance>,
-    anchor: Anchor,
-    buffer: Buffer,
-    engine: Engine,
-    modelLoader: ModelLoader,
-    materialLoader: MaterialLoader,
-    name: String,
-    distancesAndPriority: MutableMap<String, DistanceAndPriority>
-) {
-    try{
-        val node =
-            createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer)
-
-        if (childNodes.size != numberOfObject + 2) { // 最初のフェッチの時
-            childNodes += node
-            distancesAndPriority[name]?.indexOfChildNodes = childNodes.size - 1
-        } else { // 更新のフェッチの時
-            var index = distancesAndPriority[name]?.indexOfChildNodes
-            childNodes[index!!].destroy()
-            childNodes[index!!] = node
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-}
-
-fun createAnchorNode(
-    engine: Engine,
-    modelLoader: ModelLoader,
-    materialLoader: MaterialLoader,
-    modelInstances: MutableList<ModelInstance>,
-    anchor: Anchor,
-    buffer: Buffer?,
-): AnchorNode {
-    try{
-        val anchorNode = AnchorNode(engine = engine, anchor = anchor)
-        val modelNode = ModelNode(
-            modelInstance = modelInstances.apply {
-                if (isEmpty()) {
-                    try {
-                        this += modelLoader.createInstancedModel(
-                            buffer = buffer!!,
-                            count = kMaxModelInstances
-                        )
-                    } catch (e: Exception) {
-
-                        println("Error creating instanced model: ${e.message}")
-                    }
-                }
-            }.removeLast(),
-            // Scale to fit in a 0.5 meters cube
-            scaleToUnits = 0.5f
-        ).apply {
-            // Model Node needs to be editable for independent rotation from the anchor rotation
-            isEditable = true
-        }
-        val boundingBoxNode = CubeNode(
-            engine,
-            size = modelNode.extents,
-            center = modelNode.center,
-            materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
-        ).apply {
-            isVisible = false
-        }
-        modelNode.addChildNode(boundingBoxNode)
-        anchorNode.addChildNode(modelNode)
-
-        listOf(modelNode, anchorNode).forEach {
-            it.onEditingChanged = { editingTransforms ->
-                boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
-            }
-        }
-        return anchorNode
-    } catch (e: Exception) {
-        e.printStackTrace()
-        throw e
-    }
-}
-
-fun getObject(name: String, priorityNumber: Long): Buffer {
-    val byteArray = Quic.fetch(name, priorityNumber)
-    //val byteArray = Quic.httP2Fetch(name)
-
-    val buffer = ByteBuffer.wrap(byteArray)
-
-    return buffer
 }
