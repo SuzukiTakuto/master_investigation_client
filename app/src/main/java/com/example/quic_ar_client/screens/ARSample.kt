@@ -50,6 +50,7 @@ import io.github.sceneview.rememberNodes
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
 import android.util.Log
+import android.view.Display.Mode
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
@@ -85,7 +86,7 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 2
+private const val numberOfObject = 5
 
 // カメラの視野角を定義（例：水平60度、垂直45度）
 private const val HORIZONTAL_FOV = 56f
@@ -97,7 +98,7 @@ private const val screenWidth = 2560
 private const val screenHeight = 1600
 
 // ターゲットSSE
-private const val targetSSE = 1.5f
+private const val targetSSE = 20f
 
 @Composable
 fun ARSample() {
@@ -156,7 +157,10 @@ fun ARSample() {
             var byteArray = result.receiveData
             var downloadingTime = result.downloadingTime.toFloat()
             Log.d("byteeee", downloadingTime.toString())
-            //val byteArray = Quic.httP2Fetch(name)
+
+//            Log.d("go_client", "sdfsdfsdf")
+//            val byteArray = Quic.httP2Fetch(name, "test")
+//            val downloadingTime = 0f
 
             val buffer = ByteBuffer.wrap(byteArray)
 
@@ -170,7 +174,8 @@ fun ARSample() {
             modelInstances: MutableList<ModelInstance>,
             anchor: Anchor,
             buffer: Buffer?,
-        ): AnchorNode {
+            pose:  Pose
+        ): Pair<AnchorNode, ModelNode> {
             try{
                 val anchorNode = AnchorNode(engine = engine, anchor = anchor)
                 val modelNode = ModelNode(
@@ -193,23 +198,12 @@ fun ARSample() {
                     // Model Node needs to be editable for independent rotation from the anchor rotation
                     isEditable = true
                 }
-                val boundingBoxNode = CubeNode(
-                    engine,
-                    size = modelNode.extents,
-                    center = modelNode.center,
-                    materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
-                ).apply {
-                    isVisible = false
-                }
-                modelNode.addChildNode(boundingBoxNode)
                 anchorNode.addChildNode(modelNode)
 
-                listOf(modelNode, anchorNode).forEach {
-                    it.onEditingChanged = { editingTransforms ->
-                        boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
-                    }
-                }
-                return anchorNode
+                Log.d("fixxxxxxxx", "anchore: ${anchorNode.position}")
+                Log.d("fixxxxxxxx", "model: ${modelNode.position}")
+
+                return Pair(anchorNode, modelNode)
             } catch (e: Exception) {
                 e.printStackTrace()
                 throw e
@@ -224,19 +218,27 @@ fun ARSample() {
             engine: Engine,
             modelLoader: ModelLoader,
             materialLoader: MaterialLoader,
-            name: String
+            name: String,
+            pose:  Pose
         ) {
             try{
-                val node =
-                    createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer)
+                var index = objectInfoList[name]?.indexOfChildNodes
+                val (node, modelNode) =
+                    createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer, pose)
 
-                if (childNodes.size != numberOfObject + 2) { // 最初のフェッチの時
+                if (objectInfoList[name]?.indexOfChildNodes == -1) { // 最初のフェッチの時
+
                     childNodes += node
                     objectInfoList[name]?.indexOfChildNodes = childNodes.size - 1
+                    objectInfoList[name]?.modelNode = modelNode
+                    Log.d("fixxxxxxxx", "initial addNodes anchore: ${node.position}")
+                    Log.d("fixxxxxxxx", "initial addNodes anchore: ${node.position}")
                 } else { // 更新のフェッチの時
-                    var index = objectInfoList[name]?.indexOfChildNodes
+                    objectInfoList[name]?.modelNode = modelNode
                     childNodes[index!!].destroy()
                     childNodes[index!!] = node
+                    Log.d("fixxxxxxxx", "2times addNodes anchore: ${node.position}")
+                    Log.d("fixxxxxxxx", "2times addNodes anchore: ${node.position}")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -269,7 +271,7 @@ fun ARSample() {
                 buffer?.let {
                     val anchor = createAnchor(pose!!, session!!)
                     val modelInstance = mutableListOf<ModelInstance>()
-                    addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name)
+                    addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, pose!!)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -300,14 +302,15 @@ fun ARSample() {
         // LODユーティリティの計算
         fun calculateUtility(objectInfo: ObjectInfo, selectedLOD: Long): Float {
             val lod = objectInfo.lodLevelGroup[selectedLOD.toInt() - 1]
-            val sse = calculateSSE(objectInfo.distance, lod.geometricError)
-            val quality = calculateQuality(sse)
-            Log.d("calculate utility", "SSE: ${sse}, Quality: ${quality} selectedLOD: ${selectedLOD}")
-//            if (selectedLOD != 0L) {
-//                Log.d("calculate utility", "SSE: ${sse}, selectedLOD: ${quality}")
-//            }
+            //val sse = calculateSSE(objectInfo.distance, lod.geometricError)
+            val quality = calculateQuality(objectInfo.lodLevelGroup[selectedLOD.toInt() - 1].sse)
+            //Log.d("calculate utility", "SSE: ${sse}, Quality: ${quality} selectedLOD: ${selectedLOD}")
 
             val downloadTime = lod.fileSize / lod.estimateDownloadingTime
+            val currentLOD = objectInfo.currentLOD
+            if (objectInfo.lodLevelGroup[currentLOD - 1].sse <= targetSSE || objectInfo.lodLevelGroup[currentLOD - 1].sse <= objectInfo.lodLevelGroup[selectedLOD.toInt() - 1].sse) {
+                return 0f
+            }
             return quality / (1f + downloadTime)
         }
 
@@ -356,46 +359,45 @@ fun ARSample() {
 
         // オブジェクトの優先度を取得
         fun getPriorityOfObject(markerString: String, distance: Float, objectPose: Pose): Long {
+            Log.d("distanceee", distance.toString())
             if (!isInFieldOfView(objectPose)) {
                 return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
             }
 
             if (distance < 1.5) {
                 val priority = 7L
-                Log.d("allLODList", "${objectInfoList[markerString]!!.priority}")
-                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                objectInfoList[markerString]!!.priority = priority
-                Log.d("allLODList", "${distance}")
+//                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
+//                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 1.8) {
                 val priority = 6L
-                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                objectInfoList[markerString]!!.priority = priority
+//                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
+//                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.1) {
                 val priority = 5L
-                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                objectInfoList[markerString]!!.priority = priority
+//                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
+//                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.3) {
                 val priority = 4L
-                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                objectInfoList[markerString]!!.priority = priority
+//                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
+//                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.6) {
                 val priority = 3L
-                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                objectInfoList[markerString]!!.priority = priority
+//                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
+//                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else if (distance < 2.9) {
                 val priority = 2L
-                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                objectInfoList[markerString]!!.priority = priority
+//                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
+//                objectInfoList[markerString]!!.priority = priority
                 return priority
             } else {
                 val priority = 1L
-                if (objectInfoList[markerString]!!.priority <= priority) return 0 // 既にその優先度以下ならスキップ
-                objectInfoList[markerString]!!.priority = priority
+//                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
+//                objectInfoList[markerString]!!.priority = priority
                 return priority
             }
         }
@@ -409,6 +411,7 @@ fun ARSample() {
 
         // フェッチするオブジェクトLODの決定
         fun lodSelection() {
+            Log.d("allLODList", "=====")
             var remainingTime = 2f
             var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
             poses.forEachIndexed { index, pose ->
@@ -416,17 +419,23 @@ fun ARSample() {
                 val distance = objectInfoList[key]?.distance
 
                 val priority = getPriorityOfObject(key, distance!!, pose) // そのオブジェクトの優先度を取得
+                Log.d("allLODList", "${key}'s priority is ${priority}")
 
                 if (priority != 0L) {
-                    for (i in objectInfoList[key]!!.currentLOD..7) {  // priority * utilityを計算
-                        val value = calculateUtility(objectInfoList[key]!!, i.toLong()) * priority
-                        val newFetchObjectInfo = FetchObjectInfo(
-                            index,
-                            i.toLong(),
-                            value,
-                            objectInfoList[key]!!.lodLevelGroup[i - 1]
-                        )
-                        allLODList.add(newFetchObjectInfo)
+                    if (objectInfoList[key]!!.currentLOD != 7) {
+                        for (i in 0..6) { // 各LODのSSEを計算
+                            objectInfoList[key]!!.lodLevelGroup[i].sse = calculateSSE(objectInfoList[key]!!.distance, objectInfoList[key]!!.lodLevelGroup[i].geometricError)
+                        }
+                        for (i in objectInfoList[key]!!.currentLOD..7) {  // priority * utilityを計算
+                            val value = calculateUtility(objectInfoList[key]!!, i.toLong()) * priority
+                            val newFetchObjectInfo = FetchObjectInfo(
+                                index,
+                                i.toLong(),
+                                value,
+                                objectInfoList[key]!!.lodLevelGroup[i - 1]
+                            )
+                            allLODList.add(newFetchObjectInfo)
+                        }
                     }
                 }
             }
@@ -436,9 +445,12 @@ fun ARSample() {
 
             val objectsProcessed = mutableSetOf<Int>()
             var scheduledFetchLOD = mutableListOf<FetchObjectInfo>()
+            Log.d("allLODList", "==========================================================================================================")
             sortedList.forEach {
                 Log.d("allLODList", "${it}")
-                if (it.index in objectsProcessed) return@forEach
+                if (it.index in objectsProcessed) return@forEach // もうそのオブジェクトについては選択されてる場合スキップ
+                if (objectInfoList["marker${it.index + 1}"]!!.currentLOD >= it.LODLevel.level.toInt()) return@forEach // 現在のLODレベルの方が高い場合スキップ
+                if (it.value == 0f) return@forEach // valueが0の場合、それ以上今は上げる必要がないからスキップ
                 if (it.LODLevel.estimateDownloadingTime <= remainingTime) {
                     scheduledFetchLOD.add(it)
                     remainingTime -= it.LODLevel.estimateDownloadingTime
@@ -446,9 +458,11 @@ fun ARSample() {
                     objectsProcessed.add(it.index)
                 }
             }
+            Log.d("allLODList", "==========================================================================================================")
 
             scheduledFetchLOD.forEach {
                 GlobalScope.launch(Dispatchers.Main) {
+                    objectInfoList["marker${it.index + 1}"]!!.currentLOD = it.LODLevel.level.toInt()
                     fetchAndDisplayObject(
                         "marker${it.index + 1}",
                         childNodes,
@@ -496,8 +510,8 @@ fun ARSample() {
         }
 
         // Timer()のインスタンス生成
-        val timer = Timer()
-        val task = timerTask {
+        val predictionTimer = Timer()
+        val predictionTask = timerTask {
             val localCameraPose = globalCameraPose ?: return@timerTask
 
             //cameraNodeの位置と経過時間から位置を予想
@@ -530,9 +544,18 @@ fun ARSample() {
             lodSelection() // 視野内LODのアップデート
         }
 
+        val pingTimer = Timer()
+        val pingTask = timerTask {
+            val downloadingTime = Quic.sendPing()
+            Log.d("timerrrr", "${downloadingTime}")
+        }
+
         // scheduleAtFixedRateメソッドの引数
-        val delay: Long= 0L
-        val Long: Long = 2500L // 2.5秒ごと
+        val predictionDelay: Long= 0L
+        val predictionLong: Long = 2500L // 2.5秒ごと
+
+        val pingDelay: Long = 0L
+        val pingLong: Long = 6000L
 
         // 特定の条件が変更された時に一度だけ実行する関数
         LaunchedEffect(planeDetected) {
@@ -549,17 +572,20 @@ fun ARSample() {
                     cameraNode.worldPosition.z
                 )
 
+                pingTimer.scheduleAtFixedRate(pingTask, pingDelay, pingLong)
+
                 coroutineScope{
                     launch {
                         // 擬似的な平面上にオブジェクトを配置
                         val planeSize = 4f // 擬似的な平面のサイズ（メートル）
                         poses = List(numberOfObject) { index ->
-                            val x = (index * 0.2f + 0.4f)
+                            val x = (index * 0.2f + 0.8f)
                             val z = (index / 5f) * 0.5f
                             centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz() - z), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
                         }
 
                         poses.forEachIndexed { index, pose ->
+                            Log.d("fixxxxxxxx", "${pose}")
                             launch {
                                 // 新しく追加したオブジェクトのインデックスを記録する
                                 objectInfoList["marker${index + 1}"] = ObjectInfo()
@@ -571,7 +597,7 @@ fun ARSample() {
                     }
                 }
 
-                timer.scheduleAtFixedRate(task, delay, Long)
+                predictionTimer.scheduleAtFixedRate(predictionTask, predictionDelay, predictionLong)
             }
         }
 
@@ -675,7 +701,7 @@ fun ARSample() {
                         cameraPose.ty() - cameraForward[1] * fixedDistance,
                         cameraPose.tz() - cameraForward[2] * fixedDistance
                     )
-//
+
                     (childNodes[predictedNodeIndex2] as? SphereNode)?.worldPosition = Position(
                         predictedPosition.first,
                         predictedPosition.second,
