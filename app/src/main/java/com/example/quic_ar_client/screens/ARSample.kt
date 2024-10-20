@@ -80,25 +80,26 @@ import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.CylinderNode
+import io.github.sceneview.node.RenderableNode
 import kotlin.math.acos
 import kotlin.math.tan
 
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 5
+private const val numberOfObject = 2
 
 // カメラの視野角を定義（例：水平60度、垂直45度）
-private const val HORIZONTAL_FOV = 56f
+private const val HORIZONTAL_FOV = 73f
 private const val HORIZONTAL_FOV_RAD = HORIZONTAL_FOV * PI / 180
-private const val VERTICAL_FOV = 30f
+private const val VERTICAL_FOV = 70f
 
 // スクリーンサイズ
 private const val screenWidth = 2560
 private const val screenHeight = 1600
 
 // ターゲットSSE
-private const val targetSSE = 20f
+private const val targetSSE = 18f
 
 @Composable
 fun ARSample() {
@@ -138,6 +139,7 @@ fun ARSample() {
         var predictedNodeIndex1 by remember {mutableStateOf<Int>(0)}
         var predictedNodeIndex2 by remember {mutableStateOf<Int>(0)}
 
+        var plane by remember { mutableStateOf<Plane?>(null) }
 
         // オブジェクトのフェッチ処理
         // ===============================================================================
@@ -198,10 +200,16 @@ fun ARSample() {
                     // Model Node needs to be editable for independent rotation from the anchor rotation
                     isEditable = true
                 }
+                (modelNode.childNodes.firstOrNull() as? RenderableNode)?.position = Position(0f, 0f, 0f)
+//                Log.d("posesese", "${pose.tx()}")
+//                modelNode.position = Position(
+//                    pose.tx(),0f,pose.tz()
+//                )
                 anchorNode.addChildNode(modelNode)
 
-                Log.d("fixxxxxxxx", "anchore: ${anchorNode.position}")
-                Log.d("fixxxxxxxx", "model: ${modelNode.position}")
+//                Log.d("posesese", "anchore position: ${anchorNode.position}")
+//                Log.d("posesese", "modelNode position: ${modelNode.position}")
+//                Log.d("posesese", "modelNode world position: ${modelNode.worldPosition}")
 
                 return Pair(anchorNode, modelNode)
             } catch (e: Exception) {
@@ -219,26 +227,37 @@ fun ARSample() {
             modelLoader: ModelLoader,
             materialLoader: MaterialLoader,
             name: String,
-            pose:  Pose
+            pose:  Pose,
+            poseIndex: Int,
         ) {
             try{
                 var index = objectInfoList[name]?.indexOfChildNodes
                 val (node, modelNode) =
                     createAnchorNode(engine, modelLoader, materialLoader, modelInstance, anchor, buffer, pose)
+                val currentPose = poses[poseIndex]
+
+                // 実際に表示された座標にposesを変更
+//                Log.d("posesese", "${poses[poseIndex]}")
+//                Log.d("posesese", "anchor pose: ${node.pose}")
+                poses = poses.toMutableList().also { list ->
+                    if (poseIndex in list.indices) {
+                        list[poseIndex] = Pose(floatArrayOf(node.worldPosition.x, node.worldPosition.y, node.worldPosition.z), floatArrayOf(currentPose.qx(), currentPose.qy(), currentPose.qz(), currentPose.qw()))
+                    }
+                }
+//                Log.d("posesese", "${poses[poseIndex]}")
 
                 if (objectInfoList[name]?.indexOfChildNodes == -1) { // 最初のフェッチの時
-
                     childNodes += node
                     objectInfoList[name]?.indexOfChildNodes = childNodes.size - 1
                     objectInfoList[name]?.modelNode = modelNode
-                    Log.d("fixxxxxxxx", "initial addNodes anchore: ${node.position}")
-                    Log.d("fixxxxxxxx", "initial addNodes anchore: ${node.position}")
+//                    Log.d("fixxxxxxxx", "initial addNodes anchore: ${node.position}")
+//                    Log.d("fixxxxxxxx", "initial addNodes anchore: ${node.position}")
                 } else { // 更新のフェッチの時
                     objectInfoList[name]?.modelNode = modelNode
                     childNodes[index!!].destroy()
                     childNodes[index!!] = node
-                    Log.d("fixxxxxxxx", "2times addNodes anchore: ${node.position}")
-                    Log.d("fixxxxxxxx", "2times addNodes anchore: ${node.position}")
+//                    Log.d("fixxxxxxxx", "2times addNodes anchore: ${node.position}")
+//                    Log.d("fixxxxxxxx", "2times addNodes anchore: ${node.position}")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -247,8 +266,8 @@ fun ARSample() {
 
         fun createAnchor(pose: Pose, session: Session): Anchor {
             try{
-                val anchor = session.createAnchor(pose)
-                return anchor
+                val anchor = plane?.createAnchorOrNull(pose)
+                return anchor!!
             } catch (e: Exception) {
                 e.printStackTrace()
                 throw e
@@ -261,6 +280,7 @@ fun ARSample() {
             engine: Engine,
             modelLoader: ModelLoader,
             materialLoader: MaterialLoader,
+            poseIndex: Int,
             pose:  Pose?,
             session: Session?,
             priorityNumber: Long
@@ -271,7 +291,7 @@ fun ARSample() {
                 buffer?.let {
                     val anchor = createAnchor(pose!!, session!!)
                     val modelInstance = mutableListOf<ModelInstance>()
-                    addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, pose!!)
+                    addNodes(childNodes, modelInstance, anchor, it, engine, modelLoader, materialLoader, name, pose!!, poseIndex)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -325,44 +345,70 @@ fun ARSample() {
         fun isInFieldOfView(objectPose: Pose): Boolean {
             val cameraPose = globalCameraPose ?: return false
 
+            val objectPoseArray = floatArrayOf(
+                objectPose.tx(),
+                objectPose.ty(),
+                objectPose.tz()
+            )
+            val currentPositionArray = floatArrayOf(
+                currentPosition.first,
+                currentPosition.second,
+                currentPosition.third
+            )
+            val cameraPoseArray = floatArrayOf(
+                cameraPose.tx(),
+                cameraPose.ty(),
+                cameraPose.tx()
+            )
+
             val cameraToObject = floatArrayOf(
-                objectPose.tx() - cameraPose.tx(),
-                objectPose.ty() - cameraPose.ty(),
-                objectPose.tz() - cameraPose.tz()
+                objectPoseArray[0] - cameraPoseArray[0],
+                objectPoseArray[1] - cameraPoseArray[1],
+                objectPoseArray[2] - cameraPoseArray[2]
             )
 
             // カメラの前方ベクトルを取得
-            val cameraForward = cameraPose.zAxis
+            //val cameraForward = cameraPose.zAxis
+            val cameraForward = floatArrayOf(
+                currentPositionArray[0] - cameraPoseArray[0],
+                currentPositionArray[1] - cameraPoseArray[1],
+                currentPositionArray[2] - cameraPoseArray[2]
+            )
 
-            // 各ベクトルの大きさ計算
-            val cameraToObjectVerticalLength = sqrt(cameraToObject[2] * cameraToObject[2] + cameraToObject[1] * cameraToObject[1])
-            val cameraToObjectHorizontalLength = sqrt(cameraToObject[0] * cameraToObject[0] + cameraToObject[2] * cameraToObject[2])
+            // x-z平面（水平面）での計算
+            val cameraToObjectHorizontal = floatArrayOf(cameraToObject[0], cameraToObject[2])
+            val cameraForwardHorizontal = floatArrayOf(cameraForward[0], cameraForward[2])
 
-            val zAxisVerticalLength = sqrt(cameraForward[2] * cameraForward[2] + cameraForward[1] * cameraForward[1])
-            val zAxisHorizontalLength = sqrt(cameraForward[0] * cameraForward[0] + cameraForward[2] * cameraForward[2])
+            val dotProductHorizontal = cameraToObjectHorizontal[0] * cameraForwardHorizontal[0] +
+                    cameraToObjectHorizontal[1] * cameraForwardHorizontal[1]
+            val magnitudeProductHorizontal = sqrt((cameraToObjectHorizontal[0] * cameraToObjectHorizontal[0]) + (cameraToObjectHorizontal[1] * cameraToObjectHorizontal[1])) *
+                    sqrt((cameraForwardHorizontal[0] * cameraForwardHorizontal[0]) + (cameraForwardHorizontal[1] * cameraForwardHorizontal[1]))
 
-            // 内積計算
-            val dotOfVertical = cameraForward[1] * cameraToObject[1] + cameraForward[2] * cameraToObject[2]
-            val dotOfHorizontal = cameraForward[0] * cameraToObject[0] + cameraForward[2] * cameraToObject[2]
+            val horizontalAngle = Math.toDegrees(acos(dotProductHorizontal / magnitudeProductHorizontal).toDouble())
 
-            // cosθ計算
-            val cosOfVertical = dotOfVertical / (cameraToObjectVerticalLength * zAxisVerticalLength)
-            val cosOfHorizontal = dotOfHorizontal / (cameraToObjectHorizontalLength * zAxisHorizontalLength)
+            // x-y平面での計算
+            val cameraToObjectVertical = floatArrayOf(cameraToObject[0], cameraToObject[1])
+            val cameraForwardVertical = floatArrayOf(cameraForward[0], cameraForward[1])
 
-            // 逆余弦関数(180°大きい値が出るからその分引く)
-            val verticalAngle = 180 - Math.toDegrees(acos(cosOfVertical).toDouble())
-            val horizontalAngle = 180 - Math.toDegrees(acos(cosOfHorizontal).toDouble())
+            val dotProductVertical = cameraToObjectVertical[0] * cameraForwardVertical[0] +
+                    cameraToObjectVertical[1] * cameraForwardVertical[1]
+            val magnitudeProductVertical = sqrt((cameraToObjectVertical[0] * cameraToObjectVertical[0]) + (cameraToObjectVertical[1] * cameraToObjectVertical[1])) *
+                    sqrt((cameraForwardVertical[0] * cameraForwardVertical[0]) + (cameraForwardVertical[1] * cameraForwardVertical[1]))
 
+            val verticalAngle = Math.toDegrees(acos(dotProductVertical / magnitudeProductVertical).toDouble())
+
+            Log.d("horizontallll", "${horizontalAngle} : ${verticalAngle}")
+            Log.d("horizontallll", "${horizontalAngle <= HORIZONTAL_FOV / 2} : ${verticalAngle <= VERTICAL_FOV / 2}")
             // 視野角の半分と比較
             return horizontalAngle <= HORIZONTAL_FOV / 2 && verticalAngle <= VERTICAL_FOV / 2
         }
 
         // オブジェクトの優先度を取得
         fun getPriorityOfObject(markerString: String, distance: Float, objectPose: Pose): Long {
-            Log.d("distanceee", distance.toString())
             if (!isInFieldOfView(objectPose)) {
                 return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
             }
+            Log.d("distanceee", distance.toString())
 
             if (distance < 1.5) {
                 val priority = 7L
@@ -469,6 +515,7 @@ fun ARSample() {
                         engine,
                         modelLoader,
                         materialLoader,
+                        it.index,
                         poses[it.index],
                         session,
                         it.LODLevel.level
@@ -517,11 +564,7 @@ fun ARSample() {
             //cameraNodeの位置と経過時間から位置を予想
             val fixedDistance = 2f
             val cameraForward = localCameraPose.zAxis
-            currentPosition = Triple(
-                localCameraPose.tx() - cameraForward[0] * fixedDistance,
-                localCameraPose!!.ty() - cameraForward[1] * fixedDistance,
-                localCameraPose!!.tz() - cameraForward[2] * fixedDistance
-            )
+
             var positionSpeed = Triple(
                 (currentPosition.first - lastPosition.first) / t,
                 (currentPosition.second - lastPosition.second) / t,
@@ -582,6 +625,7 @@ fun ARSample() {
                             val x = (index * 0.2f + 0.8f)
                             val z = (index / 5f) * 0.5f
                             centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz() - z), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
+//                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
                         }
 
                         poses.forEachIndexed { index, pose ->
@@ -590,7 +634,7 @@ fun ARSample() {
                                 // 新しく追加したオブジェクトのインデックスを記録する
                                 objectInfoList["marker${index + 1}"] = ObjectInfo()
                                 if (isInFieldOfView(pose)) {
-                                    fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, pose, session, 1)
+                                    fetchAndDisplayObject("marker${index + 1}", childNodes, engine, modelLoader, materialLoader, index, pose, session, 1)
                                 }
                             }
                         }
@@ -599,6 +643,25 @@ fun ARSample() {
 
                 predictionTimer.scheduleAtFixedRate(predictionTask, predictionDelay, predictionLong)
             }
+        }
+
+        fun inspectNodeHierarchy(node: Node, depth: Int = 0): String {
+            val indent = "  ".repeat(depth)
+            val info = StringBuilder()
+
+            info.append("$indent${node::class.simpleName}\n")
+            info.append("${indent}World Position: ${node.worldPosition}\n")
+            info.append("${indent}World Rotation: ${node.worldRotation}\n")
+            info.append("${indent}World Scale: ${node.worldScale}\n")
+            info.append("${indent}Local Position: ${node.position}\n")
+            info.append("${indent}Local Rotation: ${node.rotation}\n")
+            info.append("${indent}Local Scale: ${node.scale}\n")
+
+            node.childNodes.forEach { child ->
+                info.append(inspectNodeHierarchy(child, depth + 1))
+            }
+
+            return info.toString()
         }
 
         ARScene(
@@ -629,8 +692,10 @@ fun ARSample() {
                     if (updatedFrame.getUpdatedPlanes()
                             .firstOrNull() !== null
                     ) {
+                        plane = updatedFrame.getUpdatedPlanes().firstOrNull()
                         centerPose = updatedFrame.getUpdatedPlanes()
                             .firstOrNull() { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }?.centerPose
+                        updatedFrame.getUpdatedPlanes().firstOrNull()
                         session = updatedSession
                         planeDetected = true
                     }
@@ -668,6 +733,11 @@ fun ARSample() {
 
                 val fixedDistance = 2f
                 val cameraForward = cameraPose.zAxis
+                currentPosition = Triple(
+                    cameraPose.tx() - cameraForward[0] * fixedDistance,
+                    cameraPose.ty() - cameraForward[1] * fixedDistance,
+                    cameraPose.tz() - cameraForward[2] * fixedDistance
+                )
                 if (childNodes.size == numberOfObject) {
                     val currentPositionNode = SphereNode(
                         engine = engine,
@@ -675,9 +745,9 @@ fun ARSample() {
                         materialInstance = materialLoader.createColorInstance(Color.Blue)
                     )
                     currentPositionNode.worldPosition = Position(
-                        cameraPose.tx() - cameraForward[0] * fixedDistance,
-                        cameraPose.ty() - cameraForward[1] * fixedDistance,
-                        cameraPose.tz() - cameraForward[2] * fixedDistance
+                        currentPosition.first,
+                        currentPosition.second,
+                        currentPosition.third
                     )
 
                     val predictedPositionNode = SphereNode(
@@ -691,10 +761,28 @@ fun ARSample() {
                         predictedPosition.third
                     )
 
+//                    val poseNode1 = SphereNode(
+//                        engine = engine,
+//                        radius = 0.05f,
+//                        materialInstance = materialLoader.createColorInstance(Color.Yellow)
+//                    )
+//                    poseNode1.worldPosition = Position(
+//                        poses[0].tx(),
+//                        poses[0].ty(),
+//                        poses[0].tz()
+//                    )
+
                     childNodes += currentPositionNode
                     predictedNodeIndex1 = childNodes.size - 1
                     childNodes += predictedPositionNode
                     predictedNodeIndex2 = childNodes.size - 1
+//                    childNodes += poseNode1
+//
+//                    val yellowSphereHierarchy = inspectNodeHierarchy(poseNode1)
+//                    Log.d("posesese", "Yellow Sphere Hierarchy:\n$yellowSphereHierarchy")
+
+                    val fetchNodeHierarchy = inspectNodeHierarchy(childNodes[0])
+                    Log.d("posesese", "Fetch Node Hierarchy:\n$fetchNodeHierarchy")
                 } else if (childNodes.size >= numberOfObject + 2) {
                     (childNodes[predictedNodeIndex1] as? SphereNode)?.worldPosition = Position(
                         cameraPose.tx() - cameraForward[0] * fixedDistance,

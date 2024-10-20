@@ -19,13 +19,13 @@ data class ObjectInfo(
 )
 
 val lodLevelGroup1: List<LODLevel> = listOf(
-    LODLevel(1, 0.029791176.toFloat(), 411924, 0f, 100f),
-    LODLevel(2, 0.029098812.toFloat(), 596667, 0f, 100f),
-    LODLevel(3, 0.02444897.toFloat(), 679431, 0f, 100f),
-    LODLevel(4, 0.021623002.toFloat(), 810875, 0f, 100f),
-    LODLevel(5, 0.017669708.toFloat(), 915269, 0f, 100f),
-    LODLevel(6, 0.013755348.toFloat(), 1077972, 0f, 100f),
-    LODLevel(7, 0f, 3122008, 0f, 100f)
+    LODLevel(1, 0.029791176.toFloat(), 411924, 0.19438033f, 100f),
+    LODLevel(2, 0.029098812.toFloat(), 596667, 0.2815576f, 100f),
+    LODLevel(3, 0.02444897.toFloat(), 679431, 0.32061258f, 100f),
+    LODLevel(4, 0.021623002.toFloat(), 810875, 0.38263893f, 100f),
+    LODLevel(5, 0.017669708.toFloat(), 915269, 0.43190074f, 100f),
+    LODLevel(6, 0.013755348.toFloat(), 1077972, 0.50867766f, 100f),
+    LODLevel(7, 0f, 3122008, 1.4732255f, 100f)
 )
 
 val lodLevelGroup2: List<LODLevel> = listOf(
