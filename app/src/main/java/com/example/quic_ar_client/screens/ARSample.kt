@@ -410,17 +410,17 @@ fun ARSample() {
 //            }
             Log.d("distanceee", distance.toString())
 
-            if (distance < 2.0) {
+            if (distance < 1.5) {
                 val priority = 7L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.3) {
+            } else if (distance < 2.0) {
                 val priority = 6L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.6) {
+            } else if (distance < 2.5) {
                 val priority = 5L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
@@ -430,12 +430,12 @@ fun ARSample() {
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 3.4) {
+            } else if (distance < 3.5) {
                 val priority = 3L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 3.8) {
+            } else if (distance < 4.8) {
                 val priority = 2L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
@@ -528,7 +528,7 @@ fun ARSample() {
         // 予想位置の範囲内にあるオブジェクトを取得
         fun getPositionOfPredictedObjects(cameraPose: Pose):  List<Int>{
             var predictedObjectKey = mutableListOf<Int>()
-            val allowableRange = 4f // 3m以内のものを抽出
+            val allowableRange = 4.5f // 3m以内のものを抽出
             val amountChangePredicted = Triple(
                 predictedPosition.first - lastPredictedPosition.first,
                 predictedPosition.second - lastPredictedPosition.second,
@@ -634,7 +634,7 @@ fun ARSample() {
                         // 擬似的な平面上にオブジェクトを配置
                         val planeSize = 4f // 擬似的な平面のサイズ（メートル）
                         poses = List(numberOfObject) { index ->
-                            val x = (index * 0.4f + 0.8f)
+                            val x = (index * 0.6f + 0.8f)
                             val z = (index / 5f) * 0.5f
                             centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
 //                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
