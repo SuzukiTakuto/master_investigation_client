@@ -415,27 +415,27 @@ fun ARSample() {
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 1.8) {
+            } else if (distance < 2.0) {
                 val priority = 6L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.1) {
+            } else if (distance < 2.5) {
                 val priority = 5L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.3) {
+            } else if (distance < 3.0) {
                 val priority = 4L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.6) {
+            } else if (distance < 3.5) {
                 val priority = 3L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.9) {
+            } else if (distance < 4.8) {
                 val priority = 2L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
@@ -622,9 +622,9 @@ fun ARSample() {
                         // 擬似的な平面上にオブジェクトを配置
                         val planeSize = 4f // 擬似的な平面のサイズ（メートル）
                         poses = List(numberOfObject) { index ->
-                            val x = (index * 0.2f + 0.8f)
+                            val x = (index * 0.6f + 0.8f)
                             val z = (index / 5f) * 0.5f
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz() - z), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
 //                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
                         }
 
