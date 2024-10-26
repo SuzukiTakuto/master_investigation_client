@@ -410,7 +410,7 @@ fun ARSample() {
 //            }
             Log.d("distanceee", distance.toString())
 
-            if (distance < 1.5) {
+            if (distance < 1.2) {
                 val priority = 7L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
@@ -420,22 +420,22 @@ fun ARSample() {
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.5) {
+            } else if (distance < 2.8) {
                 val priority = 5L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 3.0) {
+            } else if (distance < 3.6) {
                 val priority = 4L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 3.5) {
+            } else if (distance < 4.4) {
                 val priority = 3L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 4.8) {
+            } else if (distance < 5.2) {
                 val priority = 2L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
