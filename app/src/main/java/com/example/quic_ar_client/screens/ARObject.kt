@@ -1,5 +1,6 @@
 package com.example.quic_ar_client.screens
 
+import com.google.ar.core.Pose
 import io.github.sceneview.node.ModelNode
 
 data class LODLevel(
@@ -37,7 +38,6 @@ val lodLevelGroup2: List<LODLevel> = listOf(
     LODLevel(6,0.57000454.toFloat(), 1694699, 0f, 100f),
     LODLevel(7, 0f, 3464545, 0f, 100f)
 )
-
 
 
 

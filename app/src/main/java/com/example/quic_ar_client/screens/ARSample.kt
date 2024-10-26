@@ -87,7 +87,7 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 4
+private const val numberOfObject = 10
 
 // カメラの視野角を定義（例：水平60度、垂直45度）
 private const val HORIZONTAL_FOV = 80f
@@ -133,6 +133,7 @@ fun ARSample() {
         var lastAngle by remember { mutableStateOf(Triple(0f, 0f, 0f)) }
         var currentPosition by remember {mutableStateOf(Triple(0f, 0f, 0f))}
         var predictedPosition by remember {mutableStateOf(Triple(0f, 0f, 0f))}
+        var predictedCameraPosition by remember {mutableStateOf(Triple(0f, 0f, 0f))}
         var lastPredictedPosition by remember {mutableStateOf(Triple(0f, 0f, 0f))}
         var lastPosition by remember { mutableStateOf(Triple(0f, 0f, 0f)) }
 
@@ -350,29 +351,29 @@ fun ARSample() {
                 objectPose.ty(),
                 objectPose.tz()
             )
-            val currentPositionArray = floatArrayOf(
-                currentPosition.first,
-                currentPosition.second,
-                currentPosition.third
+            val predictedPositionArray = floatArrayOf(
+                predictedPosition.first,
+                predictedPosition.second,
+                predictedPosition.third
             )
-            val cameraPoseArray = floatArrayOf(
-                cameraPose.tx(),
-                cameraPose.ty(),
-                cameraPose.tx()
+            val predictedCameraPoseArray = floatArrayOf(
+                predictedCameraPosition.first,
+                predictedCameraPosition.second,
+                predictedCameraPosition.third
             )
 
             val cameraToObject = floatArrayOf(
-                objectPoseArray[0] - cameraPoseArray[0],
-                objectPoseArray[1] - cameraPoseArray[1],
-                objectPoseArray[2] - cameraPoseArray[2]
+                objectPoseArray[0] - predictedCameraPoseArray[0],
+                objectPoseArray[1] - predictedCameraPoseArray[1],
+                objectPoseArray[2] - predictedCameraPoseArray[2]
             )
 
             // カメラの前方ベクトルを取得
             //val cameraForward = cameraPose.zAxis
             val cameraForward = floatArrayOf(
-                currentPositionArray[0] - cameraPoseArray[0],
-                currentPositionArray[1] - cameraPoseArray[1],
-                currentPositionArray[2] - cameraPoseArray[2]
+                predictedPositionArray[0] - predictedCameraPoseArray[0],
+                predictedPositionArray[1] - predictedCameraPoseArray[1],
+                predictedPositionArray[2] - predictedCameraPoseArray[2]
             )
 
             // x-z平面（水平面）での計算
@@ -410,7 +411,7 @@ fun ARSample() {
 //            }
             Log.d("distanceee", distance.toString())
 
-            if (distance < 1.5) {
+            if (distance < 1.2) {
                 val priority = 7L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
@@ -420,22 +421,22 @@ fun ARSample() {
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 2.5) {
+            } else if (distance < 2.8) {
                 val priority = 5L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 3.0) {
+            } else if (distance < 3.6) {
                 val priority = 4L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 3.5) {
+            } else if (distance < 4.4) {
                 val priority = 3L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
                 return priority
-            } else if (distance < 4.8) {
+            } else if (distance < 5.2) {
                 val priority = 2L
 //                if (objectInfoList[markerString]!!.priority >= priority) return 0 // 既にその優先度以下ならスキップ
 //                objectInfoList[markerString]!!.priority = priority
@@ -458,7 +459,6 @@ fun ARSample() {
         // フェッチするオブジェクトLODの決定
         fun lodSelection(updateObjectList: List<Int>) {
             Log.d("allLODList", "=====")
-            var remainingTime = 2f
             var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
             updateObjectList.forEachIndexed { index, id ->
                 val key = "marker${id + 1}"
@@ -497,12 +497,8 @@ fun ARSample() {
                 if (it.index in objectsProcessed) return@forEach // もうそのオブジェクトについては選択されてる場合スキップ
                 if (objectInfoList["marker${it.index + 1}"]!!.currentLOD >= it.LODLevel.level.toInt()) return@forEach // 現在のLODレベルの方が高い場合スキップ
                 if (it.value == 0f) return@forEach // valueが0の場合、それ以上今は上げる必要がないからスキップ
-                if (it.LODLevel.estimateDownloadingTime <= remainingTime) {
-                    scheduledFetchLOD.add(it)
-                    remainingTime -= it.LODLevel.estimateDownloadingTime
-                    Log.d("allLODList", "残り時間: ${remainingTime}")
-                    objectsProcessed.add(it.index)
-                }
+                scheduledFetchLOD.add(it)
+                objectsProcessed.add(it.index)
             }
             Log.d("allLODList", "==========================================================================================================")
 
@@ -528,13 +524,13 @@ fun ARSample() {
         // 予想位置の範囲内にあるオブジェクトを取得
         fun getPositionOfPredictedObjects(cameraPose: Pose):  List<Int>{
             var predictedObjectKey = mutableListOf<Int>()
-            val allowableRange = 4.5f // 3m以内のものを抽出
+            val allowableRange = 5.5f // 3m以内のものを抽出
             val amountChangePredicted = Triple(
                 predictedPosition.first - lastPredictedPosition.first,
                 predictedPosition.second - lastPredictedPosition.second,
                 predictedPosition.third - lastPredictedPosition.third
             )
-            val predictedCameraPosition = Triple(
+            predictedCameraPosition = Triple(
                 cameraPose.tx() + amountChangePredicted.first,
                 cameraPose.ty() + amountChangePredicted.second,
                 cameraPose.tz() + amountChangePredicted.third
@@ -573,7 +569,7 @@ fun ARSample() {
         val predictionTask = timerTask {
             val localCameraPose = globalCameraPose ?: return@timerTask
 
-            val t = 2 // 2秒後の位置を予測
+            val t = 2.0 // 2秒後の位置を予測
             //cameraNodeの位置と経過時間から位置を予想
             var positionSpeed = Triple(
                 (currentPosition.first - lastPosition.first) / t,
@@ -607,7 +603,7 @@ fun ARSample() {
 
         // scheduleAtFixedRateメソッドの引数
         val predictionDelay: Long= 0L
-        val predictionLong: Long = 500L // 0.5秒ごと
+        val predictionLong: Long = 300L // 0.3秒ごと
 
         val pingDelay: Long = 0L
         val pingLong: Long = 6000L
@@ -633,12 +629,24 @@ fun ARSample() {
                     launch {
                         // 擬似的な平面上にオブジェクトを配置
                         val planeSize = 4f // 擬似的な平面のサイズ（メートル）
-                        poses = List(numberOfObject) { index ->
-                            val x = (index * 0.6f + 0.8f)
-                            val z = (index / 5f) * 0.5f
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
-//                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
-                        }
+//                        poses = List(numberOfObject) { index ->
+//                            val x = (index * 0.8f + 0.8f)
+//                            val z = (index * 0.8f + 0.8f)
+//                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - z), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
+//                        }
+
+                        poses = listOf(
+                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) }, // xを-方向にすると左、zを-方向にすると奥へ配置される
+                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 2), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                        )
 
                         poses.forEachIndexed { index, pose ->
                             Log.d("fixxxxxxxx", "${pose}")
@@ -777,5 +785,24 @@ fun ARSample() {
                 }
             }
         )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 32.dp)
+                .padding(16.dp)
+        ) {
+            poses.forEachIndexed { index, pose ->
+                val key = "marker${index + 1}"
+                val priority = objectInfoList[key]?.priority
+                Text(
+                    text = "key${index + 1}: ${priority}",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+        }
+
     }
 }
