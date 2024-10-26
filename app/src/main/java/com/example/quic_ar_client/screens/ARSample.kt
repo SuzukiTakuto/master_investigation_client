@@ -607,7 +607,7 @@ fun ARSample() {
 
         // scheduleAtFixedRateメソッドの引数
         val predictionDelay: Long= 0L
-        val predictionLong: Long = 500L // 0.5秒ごと
+        val predictionLong: Long = 300L // 0.3秒ごと
 
         val pingDelay: Long = 0L
         val pingLong: Long = 6000L
