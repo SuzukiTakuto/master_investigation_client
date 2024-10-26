@@ -633,12 +633,18 @@ fun ARSample() {
                     launch {
                         // 擬似的な平面上にオブジェクトを配置
                         val planeSize = 4f // 擬似的な平面のサイズ（メートル）
-                        poses = List(numberOfObject) { index ->
-                            val x = (index * 0.6f + 0.8f)
-                            val z = (index / 5f) * 0.5f
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + x, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
-//                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
-                        }
+                        poses = listOf(
+                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) }, // xを-方向にすると左、zを-方向にすると奥へ配置される
+                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 2), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                        )
 
                         poses.forEachIndexed { index, pose ->
                             Log.d("fixxxxxxxx", "${pose}")
