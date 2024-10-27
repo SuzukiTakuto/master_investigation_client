@@ -87,7 +87,7 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 2
+private const val numberOfObject = 10
 
 // カメラの視野角を定義（例：水平60度、垂直45度）
 private const val HORIZONTAL_FOV = 73f
