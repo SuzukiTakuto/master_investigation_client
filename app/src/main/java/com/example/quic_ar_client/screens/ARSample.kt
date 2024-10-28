@@ -406,9 +406,9 @@ fun ARSample() {
 
         // オブジェクトの優先度を取得
         fun getPriorityOfObject(markerString: String, distance: Float, objectPose: Pose): Long {
-//            if (!isInFieldOfView(objectPose)) {
-//                return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
-//            }
+            if (!isInFieldOfView(objectPose)) {
+                return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
+            }
             Log.d("distanceee", distance.toString())
 
             if (distance < 1.2) {
@@ -623,7 +623,7 @@ fun ARSample() {
                     cameraNode.worldPosition.z
                 )
 
-                pingTimer.scheduleAtFixedRate(pingTask, pingDelay, pingLong)
+//                pingTimer.scheduleAtFixedRate(pingTask, pingDelay, pingLong)
 
                 coroutineScope{
                     launch {
