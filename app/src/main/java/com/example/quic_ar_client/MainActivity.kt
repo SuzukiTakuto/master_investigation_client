@@ -55,6 +55,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.content.Context
 import android.util.Log
+import com.example.quic_ar_client.screens.CameraFOVCalculator
 import quic.Quic
 
 class MainActivity : ComponentActivity(),  SensorEventListener{
@@ -80,6 +81,13 @@ class MainActivity : ComponentActivity(),  SensorEventListener{
 
         setContent {
             Quic.connect()
+            val appContext: Context by lazy { applicationContext }
+            val calculator = CameraFOVCalculator(appContext)
+            calculator.getCameraFOV()?.let { fov ->
+                Log.d("FOV", "水平FOV: ${fov.horizontalFOV}度")
+                Log.d("FOV", "垂直FOV: ${fov.verticalFOV}度")
+                Log.d("FOV", "対角FOV: ${fov.diagonalFOV}度")
+            }
             Quic_ar_clientTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     HomeScreen()

@@ -87,12 +87,12 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 4
+private const val numberOfObject = 10
 
-// カメラの視野角を定義（例：水平60度、垂直45度）
-private const val HORIZONTAL_FOV = 80f
+// カメラの視野角を定義（水平72.39279度、垂直57.59845度）
+private const val HORIZONTAL_FOV = 78f
 private const val HORIZONTAL_FOV_RAD = HORIZONTAL_FOV * PI / 180
-private const val VERTICAL_FOV = 70f
+private const val VERTICAL_FOV = 63f
 
 // スクリーンサイズ
 private const val screenWidth = 2560
@@ -458,7 +458,6 @@ fun ARSample() {
         // フェッチするオブジェクトLODの決定
         fun lodSelection(updateObjectList: List<Int>) {
             Log.d("allLODList", "=====")
-            var remainingTime = 2f
             var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
             updateObjectList.forEachIndexed { index, id ->
                 val key = "marker${id + 1}"
@@ -497,12 +496,8 @@ fun ARSample() {
                 if (it.index in objectsProcessed) return@forEach // もうそのオブジェクトについては選択されてる場合スキップ
                 if (objectInfoList["marker${it.index + 1}"]!!.currentLOD >= it.LODLevel.level.toInt()) return@forEach // 現在のLODレベルの方が高い場合スキップ
                 if (it.value == 0f) return@forEach // valueが0の場合、それ以上今は上げる必要がないからスキップ
-                if (it.LODLevel.estimateDownloadingTime <= remainingTime) {
-                    scheduledFetchLOD.add(it)
-                    remainingTime -= it.LODLevel.estimateDownloadingTime
-                    Log.d("allLODList", "残り時間: ${remainingTime}")
-                    objectsProcessed.add(it.index)
-                }
+                scheduledFetchLOD.add(it)
+                objectsProcessed.add(it.index)
             }
             Log.d("allLODList", "==========================================================================================================")
 
@@ -528,7 +523,7 @@ fun ARSample() {
         // 予想位置の範囲内にあるオブジェクトを取得
         fun getPositionOfPredictedObjects(cameraPose: Pose):  List<Int>{
             var predictedObjectKey = mutableListOf<Int>()
-            val allowableRange = 4.5f // 3m以内のものを抽出
+            val allowableRange = 5.5f // 3m以内のものを抽出
             val amountChangePredicted = Triple(
                 predictedPosition.first - lastPredictedPosition.first,
                 predictedPosition.second - lastPredictedPosition.second,
@@ -627,7 +622,7 @@ fun ARSample() {
                     cameraNode.worldPosition.z
                 )
 
-                pingTimer.scheduleAtFixedRate(pingTask, pingDelay, pingLong)
+//                pingTimer.scheduleAtFixedRate(pingTask, pingDelay, pingLong)
 
                 coroutineScope{
                     launch {
