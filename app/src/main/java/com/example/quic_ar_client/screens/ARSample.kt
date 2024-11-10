@@ -118,6 +118,9 @@ fun ARSample() {
             val LODLevel: LODLevel
         )
 
+        var startTime by remember { mutableStateOf<Long>(0) }
+        var endTime by remember { mutableStateOf<Long>(0) }
+
         val engine = rememberEngine()
         val modelLoader = rememberModelLoader(engine) // モデル本体のロード
         val materialLoader = rememberMaterialLoader(engine) // オブジェクトの外観のロード
@@ -173,20 +176,31 @@ fun ARSample() {
             }
         }
 
-        suspend fun fetchObject(name: String, priorityNumber: Long) {
-            val result = withContext(Dispatchers.IO) { Quic.fetch(name, priorityNumber) }
+        suspend fun fetchObject(name: String, LODLevel: Long): Boolean {
+            Log.d("cancelTest", "${name}: fetchObject")
+            val result = withContext(Dispatchers.IO) { Quic.fetch(name, LODLevel) }
+            Log.d("cancelTest", "${name}: fetchObject内でgo呼び出し終了")
             var byteArray = result.receiveData
             downloadingTime = result.downloadingTime.toFloat()
-            calculateDownloadingTimeOfLOD(objectInfoList[name]!!.lodLevelGroup[priorityNumber.toInt() - 1].fileSize, downloadingTime, objectInfoList[name]!!)
-            Log.d("byteeee", downloadingTime.toString())
+            calculateDownloadingTimeOfLOD(objectInfoList[name]!!.lodLevelGroup[LODLevel.toInt() - 1].fileSize, downloadingTime, objectInfoList[name]!!)
+//            Log.d("byteeee", downloadingTime.toString())
 
 //            Log.d("go_client", "sdfsdfsdf")
 //            val byteArray = Quic.httP2Fetch(name, "test")
 //            val downloadingTime = 0f
 
-            val buffer = ByteBuffer.wrap(byteArray)
+            if (result.isComplete){
+                val buffer = ByteBuffer.wrap(byteArray)
 
-            cacheObject[name] = buffer
+                cacheObject[name] = buffer
+                nowDownloadingLods.remove(name) // 現在のダウンロードリストから削除
+                Log.d(
+                    "cancelTest",
+                    "${name}をキャッシュに格納&ダウンロードリストから削除: $cacheObject $nowDownloadingLods"
+                )
+            }
+
+            return result.isComplete
         }
 
         fun createAnchorNode(
@@ -369,6 +383,12 @@ fun ARSample() {
                 cameraPose.ty(),
                 cameraPose.tz()
             )
+            // 現在の2m前方
+            var currentPoseArray = floatArrayOf(
+                currentPosition.first,
+                currentPosition.second,
+                currentPosition.third
+            )
 
             // nowがtrueなら、今の視点での判定がしたいからobjectPose - cameraPose, そうでないなら予測位置での判定だからobjectPose - predictedCameraPose
             val cameraToObject = floatArrayOf(
@@ -379,9 +399,9 @@ fun ARSample() {
 
             // カメラの前方ベクトルを取得
             val cameraForward = floatArrayOf(
-                predictedPositionArray[0] - predictedCameraPoseArray[0],
-                predictedPositionArray[1] - predictedCameraPoseArray[1],
-                predictedPositionArray[2] - predictedCameraPoseArray[2]
+                if (now) currentPoseArray[0] - cameraPoseArray[0] else  predictedPositionArray[0] - predictedCameraPoseArray[0],
+                if (now) currentPoseArray[1] - cameraPoseArray[1] else  predictedPositionArray[1] - predictedCameraPoseArray[1],
+                if (now) currentPoseArray[2] - cameraPoseArray[2] else  predictedPositionArray[2] - predictedCameraPoseArray[2]
             )
 
             // x-z平面（水平面）での計算
@@ -438,8 +458,11 @@ fun ARSample() {
         }
 
         fun cancelStream(marker: String) {
+            Log.d("cancelTest", "${marker}: キャンセル関数")
+            if (Quic.isDownloadProgressReached(marker, 50L, nowDownloadingLods[marker]?.LODLevel?.level!!)) return // 60%ダウンロード完了してるならキャンセルしない
             nowDownloadingLods.remove(marker) // 現在のダウンロードリストから削除
             Quic.cancelStream(marker) // ストリームをキャンセル
+            Log.d("cancelTest", "${marker}: 視野外だからストリーム削除。 $cacheObject $nowDownloadingLods")
         }
 
         // フェッチするオブジェクトLODの決定
@@ -469,6 +492,11 @@ fun ARSample() {
                             allLODList.add(newFetchObjectInfo)
                         }
                     }
+                } else { // 視野外&ダウンロード中ならストリームのキャンセルとダウンロード中リストからの削除
+                    if (nowDownloadingLods.containsKey(key)) {
+                        cancelStream(key)
+                    }
+
                 }
             }
 
@@ -491,9 +519,11 @@ fun ARSample() {
 
             scheduledFetchLOD.forEach {
                 GlobalScope.launch(Dispatchers.Main) {
-                    objectInfoList["marker${it.index + 1}"]!!.currentLOD = it.LODLevel.level.toInt()
+                    val prevLevel = objectInfoList["marker${it.index + 1}"]!!.currentLOD
+                    objectInfoList["marker${it.index + 1}"]!!.currentLOD = it.LODLevel.level.toInt() // LODレベルの記録を更新
                     nowDownloadingLods["marker${it.index + 1}"] = it // ダウンロード中のLODのリストに追加
-                    fetchObject("marker${it.index + 1}", it.LODLevel.level)
+                    val isComplete = fetchObject("marker${it.index + 1}", it.LODLevel.level)
+                    if (!isComplete) objectInfoList["marker${it.index + 1}"]!!.currentLOD = prevLevel
                 }
             }
         }
@@ -526,8 +556,6 @@ fun ARSample() {
                     objectInfoList[markerString]?.priority = priority
 //                    val objectInfo = PredictedObjectInfo(markerString, pose, priority)
                     predictedObjectKey.add(index)
-                } else if (distance > allowableRange && nowDownloadingLods.containsKey(markerString)) { // 視野外&ダウンロード中ならストリームのキャンセルとダウンロード中リストからの削除
-                    cancelStream(markerString)
                 }
             }
 
@@ -603,6 +631,8 @@ fun ARSample() {
         LaunchedEffect(planeDetected) {
             // 各Quic.fetchを非同期で実行
             if (planeDetected && centerPose != null && session != null) {
+                startTime = System.currentTimeMillis()
+
                 lastAngle = Triple(
                     cameraNode.worldRotation.x,
                     cameraNode.worldRotation.y,
@@ -638,8 +668,19 @@ fun ARSample() {
                             launch {
                                 // 新しく追加したオブジェクトのインデックスを記録する
                                 objectInfoList["marker${index + 1}"] = ObjectInfo()
+                                Log.d("initial fetch", "${isInFieldOfView(pose, true)}")
                                 if (isInFieldOfView(pose, true)) {
-                                    fetchObject("marker${index + 1}",  1)
+                                    val prevLevel = objectInfoList["marker${index + 1}"]!!.currentLOD
+                                    objectInfoList["marker${index + 1}"]!!.currentLOD = 1 // LODレベルの記録を更新
+                                    nowDownloadingLods["marker${index + 1}"] = FetchObjectInfo(
+                                        index,
+                                        1,
+                                        0f,
+                                        objectInfoList["marker${index + 1}"]!!.lodLevelGroup[0]
+                                    ) // ダウンロード中のLODのリストに追加
+                                    val isComplete = fetchObject("marker${index + 1}", 1)
+                                    if (!isComplete) objectInfoList["marker${index + 1}"]!!.currentLOD = prevLevel
+                                    Log.d("cancelTest", "${"marker${index + 1}"}: 初期fetch")
                                 }
                             }
                         }
@@ -707,8 +748,16 @@ fun ARSample() {
                                 // キャッシュにこのマーカーのバッファーがあるか確認, あったら表示
                                 if (cacheObject.containsKey(key) and (cacheObject[key] != null)) {
                                     // 表示処理
+                                    Log.d("cancelTest", "${key}: このフレームで視野内。")
+                                    Log.d("elapse time", "表示")
                                     displayObject(key, childNodes, engine, modelLoader, materialLoader, index, pose, session, cacheObject[key]!!)
+                                    if (childNodes.size == 1) {
+                                        endTime = System.currentTimeMillis()
+                                        val elapseTime = endTime - startTime
+                                        Log.d("cancelTest", "${elapseTime}")
+                                    }
                                     cacheObject.remove(key) // 表示したらキャッシュ削除
+                                    Log.d("cancelTest", "${key}: 表示したのでキャッシュから削除。 $cacheObject")
                                 }
                             }
 
