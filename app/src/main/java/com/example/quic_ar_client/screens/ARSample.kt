@@ -87,7 +87,7 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 10
+private const val numberOfObject = 12
 
 // カメラの視野角を定義（例：水平60度、垂直45度）
 private const val HORIZONTAL_FOV = 80f
@@ -595,18 +595,9 @@ fun ARSample() {
             lastPredictedPosition = predictedPosition
         }
 
-        val pingTimer = Timer()
-        val pingTask = timerTask {
-            val downloadingTime = Quic.sendPing()
-            Log.d("timerrrr", "${downloadingTime}")
-        }
-
         // scheduleAtFixedRateメソッドの引数
         val predictionDelay: Long= 0L
         val predictionLong: Long = 300L // 0.3秒ごと
-
-        val pingDelay: Long = 0L
-        val pingLong: Long = 6000L
 
         // 特定の条件が変更された時に一度だけ実行する関数
         LaunchedEffect(planeDetected) {
@@ -627,25 +618,19 @@ fun ARSample() {
 
                 coroutineScope{
                     launch {
-                        // 擬似的な平面上にオブジェクトを配置
-                        val planeSize = 4f // 擬似的な平面のサイズ（メートル）
-//                        poses = List(numberOfObject) { index ->
-//                            val x = (index * 0.8f + 0.8f)
-//                            val z = (index * 0.8f + 0.8f)
-//                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - z), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) } // xを-方向にすると左、zを-方向にすると奥へ配置される
-//                        }
-
                         poses = listOf(
                             centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) }, // xを-方向にすると左、zを-方向にすると奥へ配置される
                             centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 2), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz() + 1.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz() + 1.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz() + 1.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz() + 1.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
                         )
 
                         poses.forEachIndexed { index, pose ->
