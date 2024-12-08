@@ -80,6 +80,7 @@ class MainActivity : ComponentActivity(),  SensorEventListener{
 
         setContent {
             Quic.connect()
+//            Quic.httP2Connect()
             Quic_ar_clientTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     HomeScreen()

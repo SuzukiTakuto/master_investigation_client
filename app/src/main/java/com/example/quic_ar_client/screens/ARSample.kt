@@ -90,7 +90,7 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 10
+private const val numberOfObject = 12
 
 // カメラの視野角を定義（水平72.39279度、垂直57.59845度）
 private const val HORIZONTAL_FOV = 80f
@@ -177,27 +177,29 @@ fun ARSample() {
         }
 
         suspend fun fetchObject(name: String, LODLevel: Long): Boolean {
-            Log.d("cancelTest", "${name}: fetchObject")
+//            Log.d("cancelTest", "${name}: fetchObject")
             val result = withContext(Dispatchers.IO) { Quic.fetch(name, LODLevel) }
-            Log.d("cancelTest", "${name}: fetchObject内でgo呼び出し終了")
+//            var result = withContext(Dispatchers.IO) { Quic.httP2ArFetch(name, LODLevel) }
+//            Log.d("cancelTest", "${result.isComplete}")
+//            Log.d("cancelTest", "${name}: fetchObject内でgo呼び出し終了")
             var byteArray = result.receiveData
             downloadingTime = result.downloadingTime.toFloat()
             calculateDownloadingTimeOfLOD(objectInfoList[name]!!.lodLevelGroup[LODLevel.toInt() - 1].fileSize, downloadingTime, objectInfoList[name]!!)
-//            Log.d("byteeee", downloadingTime.toString())
 
 //            Log.d("go_client", "sdfsdfsdf")
 //            val byteArray = Quic.httP2Fetch(name, "test")
 //            val downloadingTime = 0f
+
 
             if (result.isComplete){
                 val buffer = ByteBuffer.wrap(byteArray)
 
                 cacheObject[name] = buffer
                 nowDownloadingLods.remove(name) // 現在のダウンロードリストから削除
-                Log.d(
-                    "cancelTest",
-                    "${name}をキャッシュに格納&ダウンロードリストから削除: $cacheObject $nowDownloadingLods"
-                )
+//                Log.d(
+//                    "cancelTest",
+//                    "${name}をキャッシュに格納&ダウンロードリストから削除: $cacheObject $nowDownloadingLods"
+//                )
             }
 
             return result.isComplete
@@ -419,9 +421,6 @@ fun ARSample() {
             val arctanCameraToObject = atan2(cameraToObject[1].toDouble(), sqrt((cameraToObjectHorizontal[0] * cameraToObjectHorizontal[0]) + (cameraToObjectHorizontal[1] * cameraToObjectHorizontal[1])).toDouble())
             val verticalAngle = abs((arctanCameraToForward - arctanCameraToObject) * 100)
 
-            Log.d("horizontallll", "${horizontalAngle} : ${verticalAngle}")
-            Log.d("horizontallll", "${horizontalAngle <= HORIZONTAL_FOV / 2} : ${verticalAngle <= VERTICAL_FOV / 2}")
-
             // 視野角の半分と比較
             return horizontalAngle <= HORIZONTAL_FOV / 2 && verticalAngle <= VERTICAL_FOV / 2
         }
@@ -431,7 +430,7 @@ fun ARSample() {
             if (!isInFieldOfView(objectPose, false)) {
                 return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
             }
-            Log.d("distanceee", distance.toString())
+//            Log.d("distanceee", distance.toString())
 
             if (distance < 1.2) {
                 val priority = 7L
@@ -465,16 +464,20 @@ fun ARSample() {
             Log.d("cancelTest", "${marker}: 視野外だからストリーム削除。 $cacheObject $nowDownloadingLods")
         }
 
+        fun httpCancelStream(marker: String) {
+            Quic.httP2CancelStream(marker)
+        }
+
         // フェッチするオブジェクトLODの決定
         fun lodSelection(updateObjectList: List<Int>) {
-            Log.d("allLODList", "=====")
+//            Log.d("allLODList", "=====")
             var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
             updateObjectList.forEachIndexed { index, id ->
                 val key = "marker${id + 1}"
                 val distance = objectInfoList[key]?.distance
 
                 val priority = objectInfoList[key]?.priority // そのオブジェクトの優先度を取得
-                Log.d("allLODList", "${key}'s priority is ${priority}")
+//                Log.d("allLODList", "${key}'s priority is ${priority}")
 
                 if (priority != 0L) {
                     if (objectInfoList[key]!!.currentLOD != 7) {
@@ -495,6 +498,7 @@ fun ARSample() {
                 } else { // 視野外&ダウンロード中ならストリームのキャンセルとダウンロード中リストからの削除
                     if (nowDownloadingLods.containsKey(key)) {
                         cancelStream(key)
+//                        httpCancelStream(key)
                     }
 
                 }
@@ -505,9 +509,9 @@ fun ARSample() {
 
             val objectsProcessed = mutableSetOf<Int>()
             var scheduledFetchLOD = mutableListOf<FetchObjectInfo>()
-            Log.d("allLODList", "==========================================================================================================")
+//            Log.d("allLODList", "==========================================================================================================")
             sortedList.forEach {
-                Log.d("allLODList", "${it}")
+//                Log.d("allLODList", "${it}")
                 if (it.index in objectsProcessed) return@forEach // もうそのオブジェクトについては選択されてる場合スキップ
                 if (objectInfoList["marker${it.index + 1}"]!!.currentLOD >= it.LODLevel.level.toInt()) return@forEach // 現在のLODレベルの方が高い場合スキップ
                 // キャッシュに存在するならここでスキップ
@@ -515,7 +519,7 @@ fun ARSample() {
                 scheduledFetchLOD.add(it)
                 objectsProcessed.add(it.index)
             }
-            Log.d("allLODList", "==========================================================================================================")
+//            Log.d("allLODList", "==========================================================================================================")
 
             scheduledFetchLOD.forEach {
                 GlobalScope.launch(Dispatchers.Main) {
@@ -654,21 +658,23 @@ fun ARSample() {
                         poses = listOf(
                             centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) }, // xを-方向にすると左、zを-方向にすると奥へ配置される
                             centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.5f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 2), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 4.0f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 5.5f, it.ty(), it.tz() + 3.5f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz() + 1.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz() + 1.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz() + 1.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
+                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz() + 1.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
                         )
 
                         poses.forEachIndexed { index, pose ->
                             launch {
                                 // 新しく追加したオブジェクトのインデックスを記録する
                                 objectInfoList["marker${index + 1}"] = ObjectInfo()
-                                Log.d("initial fetch", "${isInFieldOfView(pose, true)}")
+//                                Log.d("initial fetch", "${isInFieldOfView(pose, true)}")
                                 if (isInFieldOfView(pose, true)) {
                                     val prevLevel = objectInfoList["marker${index + 1}"]!!.currentLOD
                                     objectInfoList["marker${index + 1}"]!!.currentLOD = 1 // LODレベルの記録を更新
@@ -680,7 +686,7 @@ fun ARSample() {
                                     ) // ダウンロード中のLODのリストに追加
                                     val isComplete = fetchObject("marker${index + 1}", 1)
                                     if (!isComplete) objectInfoList["marker${index + 1}"]!!.currentLOD = prevLevel
-                                    Log.d("cancelTest", "${"marker${index + 1}"}: 初期fetch")
+//                                    Log.d("cancelTest", "${"marker${index + 1}"}: 初期fetch")
                                 }
                             }
                         }
@@ -748,16 +754,16 @@ fun ARSample() {
                                 // キャッシュにこのマーカーのバッファーがあるか確認, あったら表示
                                 if (cacheObject.containsKey(key) and (cacheObject[key] != null)) {
                                     // 表示処理
-                                    Log.d("cancelTest", "${key}: このフレームで視野内。")
-                                    Log.d("elapse time", "表示")
+//                                    Log.d("cancelTest", "${key}: このフレームで視野内。")
+//                                    Log.d("elapse time", "表示")
                                     displayObject(key, childNodes, engine, modelLoader, materialLoader, index, pose, session, cacheObject[key]!!)
                                     if (childNodes.size == 1) {
                                         endTime = System.currentTimeMillis()
                                         val elapseTime = endTime - startTime
-                                        Log.d("cancelTest", "${elapseTime}")
+//                                        Log.d("cancelTest", "${elapseTime}")
                                     }
                                     cacheObject.remove(key) // 表示したらキャッシュ削除
-                                    Log.d("cancelTest", "${key}: 表示したのでキャッシュから削除。 $cacheObject")
+//                                    Log.d("cancelTest", "${key}: 表示したのでキャッシュから削除。 $cacheObject")
                                 }
                             }
 
