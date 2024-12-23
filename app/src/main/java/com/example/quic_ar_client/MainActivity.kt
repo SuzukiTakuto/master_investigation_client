@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity(),  SensorEventListener{
 //        magnetic = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
         setContent {
-            Quic.connect()
+//            Quic.connect()
 //            Quic.httP2Connect()
             Quic_ar_clientTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {

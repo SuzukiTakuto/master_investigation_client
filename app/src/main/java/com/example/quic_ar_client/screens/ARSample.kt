@@ -90,7 +90,7 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 12
+private const val numberOfObject = 5
 
 // カメラの視野角を定義（水平72.39279度、垂直57.59845度）
 private const val HORIZONTAL_FOV = 80f
@@ -168,30 +168,30 @@ fun ARSample() {
         // ===============================================================================
         // ===============================================================================
         // ===============================================================================
-        // オブジェクトグループの各LODのダウンロード時間を推定
-        fun calculateDownloadingTimeOfLOD(fileSize: Long, downloadingTime: Float, objectInfo: ObjectInfo) {
-            objectInfo.lodLevelGroup.forEach {
-                val calculatedEstimateDownloadingTime = (downloadingTime * it.fileSize) / fileSize
-                it.estimateDownloadingTime = calculatedEstimateDownloadingTime
-            }
-        }
-
         suspend fun fetchObject(name: String, LODLevel: Long): Boolean {
 //            Log.d("cancelTest", "${name}: fetchObject")
-            val result = withContext(Dispatchers.IO) { Quic.fetch(name, LODLevel) }
+//            val startTime = System.currentTimeMillis()
+//            val result = withContext(Dispatchers.IO) { Quic.fetch(name, LODLevel) }
+//            val endTime = System.currentTimeMillis() // 処理終了時間を取得
+//            val elapsedTime = endTime - startTime // 処理時間を計算
+//            println("cancelTest: $name の処理時間 = $elapsedTime ms")
+
 //            var result = withContext(Dispatchers.IO) { Quic.httP2ArFetch(name, LODLevel) }
 //            Log.d("cancelTest", "${result.isComplete}")
 //            Log.d("cancelTest", "${name}: fetchObject内でgo呼び出し終了")
-            var byteArray = result.receiveData
-            downloadingTime = result.downloadingTime.toFloat()
-            calculateDownloadingTimeOfLOD(objectInfoList[name]!!.lodLevelGroup[LODLevel.toInt() - 1].fileSize, downloadingTime, objectInfoList[name]!!)
 
-//            Log.d("go_client", "sdfsdfsdf")
-//            val byteArray = Quic.httP2Fetch(name, "test")
-//            val downloadingTime = 0f
+//            var byteArray = result.receiveData
+//            downloadingTime = result.downloadingTime.toFloat()
+//            calculateDownloadingTimeOfLOD(objectInfoList[name]!!.lodLevelGroup[LODLevel.toInt() - 1].fileSize, downloadingTime, objectInfoList[name]!!)
 
+            val startTime = System.currentTimeMillis()
+            var byteArray = Quic.httP2Fetch(name, "test")
+            val endTime = System.currentTimeMillis() // 処理終了時間を取得
+            val elapsedTime = endTime - startTime // 処理時間を計算
+            println("cancelTest: $name の処理時間 = $elapsedTime ms. データサイズ = ${byteArray.size}")
 
-            if (result.isComplete){
+//            if (result.isComplete){
+            if (true){
                 val buffer = ByteBuffer.wrap(byteArray)
 
                 cacheObject[name] = buffer
@@ -202,7 +202,8 @@ fun ARSample() {
 //                )
             }
 
-            return result.isComplete
+//            return result.isComplete
+            return true
         }
 
         fun createAnchorNode(
@@ -288,7 +289,8 @@ fun ARSample() {
 
         fun createAnchor(pose: Pose, session: Session): Anchor {
             try{
-                val anchor = plane?.createAnchorOrNull(pose)
+//                val anchor = plane?.createAnchorOrNull(pose)
+                val anchor = session.createAnchor(pose)
                 return anchor!!
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -342,7 +344,7 @@ fun ARSample() {
             //val sse = calculateSSE(objectInfo.distance, lod.geometricError)
             val quality = calculateQuality(objectInfo.lodLevelGroup[selectedLOD.toInt() - 1].sse)
 
-            val downloadTime = lod.fileSize / lod.estimateDownloadingTime
+            val downloadTime = lod.estimateDownloadingTime
             val currentLOD = objectInfo.currentLOD
             if (objectInfo.lodLevelGroup[currentLOD - 1].sse <= targetSSE || objectInfo.lodLevelGroup[currentLOD - 1].sse <= objectInfo.lodLevelGroup[selectedLOD.toInt() - 1].sse) {
                 return 0f
@@ -457,8 +459,7 @@ fun ARSample() {
         }
 
         fun cancelStream(marker: String) {
-            Log.d("cancelTest", "${marker}: キャンセル関数")
-            if (Quic.isDownloadProgressReached(marker, 50L, nowDownloadingLods[marker]?.LODLevel?.level!!)) return // 60%ダウンロード完了してるならキャンセルしない
+//            Log.d("cancelTest", "${marker}: キャンセル関数")
             nowDownloadingLods.remove(marker) // 現在のダウンロードリストから削除
             Quic.cancelStream(marker) // ストリームをキャンセル
             Log.d("cancelTest", "${marker}: 視野外だからストリーム削除。 $cacheObject $nowDownloadingLods")
@@ -468,13 +469,47 @@ fun ARSample() {
             Quic.httP2CancelStream(marker)
         }
 
+        // 1秒ごとに直近のダウンロードサイズを格納
+        var downloadSizeFor5seconds = ArrayDeque<Long>(5)
+        val estimateTimer = Timer()
+        val estimateTask = timerTask {
+            val size = Quic.getTotalAtThatTime()
+            downloadSizeFor5seconds.addLast(size)
+            if (downloadSizeFor5seconds.size > 5) {
+                downloadSizeFor5seconds.removeFirst()
+            }
+        }
+        val estimateDelay = 0L
+        val estimateLong = 1000L
+
+        fun getMovingAverage(): Float {
+            var total = 0f
+            downloadSizeFor5seconds.forEach { size ->
+                total += size
+            }
+
+            return total / 5
+        }
+
+        // オブジェクトグループの各LODのダウンロード時間を推定
+        fun calculateDownloadingTimeOfLOD(movingAverage: Float, objectInfo: ObjectInfo) {
+            objectInfo.lodLevelGroup.forEach {
+                if (movingAverage == 0f) {
+                    it.estimateDownloadingTime = 0f
+                } else {
+                    it.estimateDownloadingTime = it.fileSize / movingAverage
+                }
+            }
+        }
+
         // フェッチするオブジェクトLODの決定
         fun lodSelection(updateObjectList: List<Int>) {
-//            Log.d("allLODList", "=====")
+            var movingAverage = getMovingAverage() // 直近5秒の移動平均を取得
             var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
             updateObjectList.forEachIndexed { index, id ->
                 val key = "marker${id + 1}"
                 val distance = objectInfoList[key]?.distance
+                calculateDownloadingTimeOfLOD(movingAverage, objectInfoList[key]!!) // ダウンロード時間の推定
 
                 val priority = objectInfoList[key]?.priority // そのオブジェクトの優先度を取得
 //                Log.d("allLODList", "${key}'s priority is ${priority}")
@@ -497,8 +532,12 @@ fun ARSample() {
                     }
                 } else { // 視野外&ダウンロード中ならストリームのキャンセルとダウンロード中リストからの削除
                     if (nowDownloadingLods.containsKey(key)) {
-                        cancelStream(key)
-//                        httpCancelStream(key)
+                        // 70%ダウンロード完了してるならキャンセルしない
+                        if (!Quic.isDownloadProgressReached(key, 70L, nowDownloadingLods[key]?.LODLevel?.level!!)) {
+                            Log.d("cancelTest", "${key}: 視野外キャンセル対象")
+                            cancelStream(key)
+//                            httpCancelStream(key)
+                        }
                     }
 
                 }
@@ -516,6 +555,7 @@ fun ARSample() {
                 if (objectInfoList["marker${it.index + 1}"]!!.currentLOD >= it.LODLevel.level.toInt()) return@forEach // 現在のLODレベルの方が高い場合スキップ
                 // キャッシュに存在するならここでスキップ
                 if (it.value == 0f) return@forEach // valueが0の場合、それ以上今は上げる必要がないからスキップ
+                if (nowDownloadingLods.containsKey("marker${it.index + 1}")) cancelStream("marker${it.index + 1}") // 現在通信中ならキャンセルしてこの後新しく再リクエスト
                 scheduledFetchLOD.add(it)
                 objectsProcessed.add(it.index)
             }
@@ -631,10 +671,12 @@ fun ARSample() {
         val predictionDelay: Long= 0L
         val predictionLong: Long = 300L // 0.3秒ごと
 
+        var isInitialized by remember { mutableStateOf(false) }
+
         // 特定の条件が変更された時に一度だけ実行する関数
         LaunchedEffect(planeDetected) {
             // 各Quic.fetchを非同期で実行
-            if (planeDetected && centerPose != null && session != null) {
+            if (planeDetected && session != null) {
                 startTime = System.currentTimeMillis()
 
                 lastAngle = Triple(
@@ -653,22 +695,10 @@ fun ARSample() {
                     cameraNode.worldRotation.z
                 )
 
-                coroutineScope{
+                coroutineScope {
                     launch {
-                        poses = listOf(
-                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) }, // xを-方向にすると左、zを-方向にすると奥へ配置される
-                            centerPose!!.let { Pose(floatArrayOf(it.tx(), it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() - 1f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1f, it.ty(), it.tz() - 1), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz()), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz() + 1.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz() + 1.3f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 1.7f, it.ty(), it.tz() + 1.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                            centerPose!!.let { Pose(floatArrayOf(it.tx() + 2.5f, it.ty(), it.tz() + 1.8f), floatArrayOf(it.qx(), it.qy(), it.qz(), it.qw())) },
-                        )
+//                        poses = createCancelTestPoses(globalCameraPose!!)
+                        poses = createAllPoses(globalCameraPose!!)
 
                         poses.forEachIndexed { index, pose ->
                             launch {
@@ -676,8 +706,11 @@ fun ARSample() {
                                 objectInfoList["marker${index + 1}"] = ObjectInfo()
 //                                Log.d("initial fetch", "${isInFieldOfView(pose, true)}")
                                 if (isInFieldOfView(pose, true)) {
-                                    val prevLevel = objectInfoList["marker${index + 1}"]!!.currentLOD
-                                    objectInfoList["marker${index + 1}"]!!.currentLOD = 1 // LODレベルの記録を更新
+//                                if (true) {
+                                    val prevLevel =
+                                        objectInfoList["marker${index + 1}"]!!.currentLOD
+                                    objectInfoList["marker${index + 1}"]!!.currentLOD =
+                                        1 // LODレベルの記録を更新
                                     nowDownloadingLods["marker${index + 1}"] = FetchObjectInfo(
                                         index,
                                         1,
@@ -685,7 +718,8 @@ fun ARSample() {
                                         objectInfoList["marker${index + 1}"]!!.lodLevelGroup[0]
                                     ) // ダウンロード中のLODのリストに追加
                                     val isComplete = fetchObject("marker${index + 1}", 1)
-                                    if (!isComplete) objectInfoList["marker${index + 1}"]!!.currentLOD = prevLevel
+                                    if (!isComplete) objectInfoList["marker${index + 1}"]!!.currentLOD =
+                                        prevLevel
 //                                    Log.d("cancelTest", "${"marker${index + 1}"}: 初期fetch")
                                 }
                             }
@@ -694,6 +728,9 @@ fun ARSample() {
                 }
 
                 predictionTimer.scheduleAtFixedRate(predictionTask, predictionDelay, predictionLong)
+                estimateTimer.scheduleAtFixedRate(estimateTask, estimateDelay, estimateLong)
+
+                isInitialized = true
             }
         }
 
@@ -729,9 +766,14 @@ fun ARSample() {
                         centerPose = updatedFrame.getUpdatedPlanes()
                             .firstOrNull() { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }?.centerPose
                         updatedFrame.getUpdatedPlanes().firstOrNull()
-                        session = updatedSession
-                        planeDetected = true
+
                     }
+                }
+
+                if (!isInitialized) {
+                    Log.d("sdfsdf", "sdfsdf")
+                    session = updatedSession
+                    planeDetected = true
                 }
 
                 // カメラの位置を取得
