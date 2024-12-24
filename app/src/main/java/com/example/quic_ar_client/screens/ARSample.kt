@@ -90,7 +90,7 @@ import kotlin.math.tan
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 5
+private const val numberOfObject = 50
 
 // カメラの視野角を定義（水平72.39279度、垂直57.59845度）
 private const val HORIZONTAL_FOV = 80f
@@ -170,28 +170,28 @@ fun ARSample() {
         // ===============================================================================
         suspend fun fetchObject(name: String, LODLevel: Long): Boolean {
 //            Log.d("cancelTest", "${name}: fetchObject")
-//            val startTime = System.currentTimeMillis()
-//            val result = withContext(Dispatchers.IO) { Quic.fetch(name, LODLevel) }
-//            val endTime = System.currentTimeMillis() // 処理終了時間を取得
-//            val elapsedTime = endTime - startTime // 処理時間を計算
-//            println("cancelTest: $name の処理時間 = $elapsedTime ms")
+            val startTime = System.currentTimeMillis()
+            val result = withContext(Dispatchers.IO) { Quic.fetch(name, LODLevel) }
+            val endTime = System.currentTimeMillis() // 処理終了時間を取得
+            val elapsedTime = endTime - startTime // 処理時間を計算
+            println("cancelTest: $name の処理時間 = $elapsedTime ms")
 
 //            var result = withContext(Dispatchers.IO) { Quic.httP2ArFetch(name, LODLevel) }
 //            Log.d("cancelTest", "${result.isComplete}")
 //            Log.d("cancelTest", "${name}: fetchObject内でgo呼び出し終了")
 
-//            var byteArray = result.receiveData
-//            downloadingTime = result.downloadingTime.toFloat()
+            var byteArray = result.receiveData
+            downloadingTime = result.downloadingTime.toFloat()
 //            calculateDownloadingTimeOfLOD(objectInfoList[name]!!.lodLevelGroup[LODLevel.toInt() - 1].fileSize, downloadingTime, objectInfoList[name]!!)
 
-            val startTime = System.currentTimeMillis()
-            var byteArray = Quic.httP2Fetch(name, "test")
-            val endTime = System.currentTimeMillis() // 処理終了時間を取得
-            val elapsedTime = endTime - startTime // 処理時間を計算
-            println("cancelTest: $name の処理時間 = $elapsedTime ms. データサイズ = ${byteArray.size}")
+//            val startTime = System.currentTimeMillis()
+//            var byteArray = Quic.httP2Fetch(name, "test")
+//            val endTime = System.currentTimeMillis() // 処理終了時間を取得
+//            val elapsedTime = endTime - startTime // 処理時間を計算
+//            println("cancelTest: $name の処理時間 = $elapsedTime ms. データサイズ = ${byteArray.size}")
 
-//            if (result.isComplete){
-            if (true){
+            if (result.isComplete){
+//            if (true){
                 val buffer = ByteBuffer.wrap(byteArray)
 
                 cacheObject[name] = buffer
@@ -202,8 +202,8 @@ fun ARSample() {
 //                )
             }
 
-//            return result.isComplete
-            return true
+            return result.isComplete
+//            return true
         }
 
         fun createAnchorNode(
@@ -699,6 +699,7 @@ fun ARSample() {
                     launch {
 //                        poses = createCancelTestPoses(globalCameraPose!!)
                         poses = createAllPoses(globalCameraPose!!)
+                        Log.d("qposeSizse", poses.size.toString())
 
                         poses.forEachIndexed { index, pose ->
                             launch {
