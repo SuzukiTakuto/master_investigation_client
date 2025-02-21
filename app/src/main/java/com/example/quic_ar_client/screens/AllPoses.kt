@@ -755,6 +755,246 @@ fun createAllPoses(globalCameraPose: Pose): List<Pose> {
                 cameraPose.rotationQuaternion
             ) // 中心
         },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 1.7f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f + 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.5f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f + 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 1.7f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f + 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.5f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f + 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 1.7f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f - 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.5f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f - 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 1.7f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f - 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.5f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f - 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f - 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f - 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f + 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.3f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
+        globalCameraPose!!.let { cameraPose ->
+            val forward = cameraPose.zAxis
+            val right = cameraPose.xAxis
+
+            // 基準点の計算（カメラの2m前方）
+            val baseX = cameraPose.tx() - forward[0] * 2.0f + 2.0f
+            val baseY = cameraPose.ty() - forward[1] * 2.0f + 0.4f
+            val baseZ = cameraPose.tz() - forward[2] * 2.0f + 1.8f
+
+            // 以下、基準点からの相対位置で配置
+            Pose(
+                floatArrayOf(baseX, baseY, baseZ),
+                cameraPose.rotationQuaternion
+            ) // 中心
+        },
     )
 
     return poses

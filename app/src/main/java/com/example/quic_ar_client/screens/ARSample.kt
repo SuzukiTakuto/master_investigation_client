@@ -86,14 +86,16 @@ import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.atan2
 import kotlin.math.tan
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 // distance: オブジェクトとユーザの距離。priority: 現在の優先度(想定外の優先度で初期化)。indexOfChildNodes: childNodesのどこにそのオブジェクトが格納されているか。
 
 private const val kMaxModelInstances = 10
-private const val numberOfObject = 50
+private const val numberOfObject = 1
 
 // カメラの視野角を定義（水平72.39279度、垂直57.59845度）
-private const val HORIZONTAL_FOV = 80f
+private const val HORIZONTAL_FOV = 75f
 private const val HORIZONTAL_FOV_RAD = HORIZONTAL_FOV * PI / 180
 private const val VERTICAL_FOV = 67f
 
@@ -101,12 +103,34 @@ private const val VERTICAL_FOV = 67f
 private const val screenWidth = 2560
 private const val screenHeight = 1600
 
+// 実験のアルゴリズム(2: 予測地点の周りを持ってくる、3: 視線予測のみでキャンセル無し, 4: キャンセルあり)
+private const val experimental_type = 4
+
 // ターゲットSSE
-private const val targetSSE = 18f
+private const val targetSSE = 14f
+
+val mutex = Mutex()
 
 @Composable
 fun ARSample() {
     val objectInfoList by remember { mutableStateOf(mutableMapOf<String, ObjectInfo>()) }
+    val objectInfoListForMeasure by remember { mutableStateOf(mutableMapOf<String, ObjectInfo>()) }
+
+    val previousVisibilityMap by remember {
+        mutableStateOf(HashMap<String, Boolean>(66).also { map ->
+            for (i in 1..66) {
+                map["marker$i"] = false
+            }
+        })
+    }
+
+    val insightTimeMap by remember {
+        mutableStateOf(HashMap<String, Long>(66).also { map ->
+            for (i in 1..66) {
+                map["marker$i"] = 0
+            }
+        })
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -117,6 +141,17 @@ fun ARSample() {
             val value: Float,
             val LODLevel: LODLevel
         )
+
+        var cacheTotal by remember { mutableStateOf<Int>(0) }
+        var cacheFailedTotal by remember { mutableStateOf<Int>(0) }
+        var cacheShowMiss by remember { mutableStateOf<Int>(0) }
+        var totalFrame by remember { mutableStateOf<Int>(0) }
+        var totalLODMissFrame by remember { mutableStateOf<Int>(0) }
+        var totalShowMissFrame by remember { mutableStateOf<Int>(0) }
+
+        var cancel70Count by remember { mutableStateOf<Int>(0) }
+        var noCancel70Count by remember { mutableStateOf<Int>(0) }
+        var updateLODCancel by remember { mutableStateOf<Int>(0) }
 
         var startTime by remember { mutableStateOf<Long>(0) }
         var endTime by remember { mutableStateOf<Long>(0) }
@@ -163,18 +198,28 @@ fun ARSample() {
 
         var downloadingTime by remember { mutableStateOf<Float>(0f) }
 
+        data class NowAndNextLevel(
+            var now: Long,
+            var next: Long
+        )
+        var objectNowLevelAndNextLevel by remember { mutableStateOf(mutableMapOf<Int, NowAndNextLevel>()) }
+
         // オブジェクトのフェッチ処理
         // ===============================================================================
         // ===============================================================================
         // ===============================================================================
         // ===============================================================================
+        var fetchCount = 0
         suspend fun fetchObject(name: String, LODLevel: Long): Boolean {
-//            Log.d("cancelTest", "${name}: fetchObject")
+            fetchCount ++
+//            Log.d("fetchCounter", "${fetchCount}回目のフェッチ")
             val startTime = System.currentTimeMillis()
+            Log.d("表示時間計測", "${name} リクエスト 優先度${LODLevel}でリクエスト ${System.currentTimeMillis()}")
+            Log.d("表示orLOD遅延", "${name} リクエスト 優先度${LODLevel}でリクエスト ${System.currentTimeMillis()}")
             val result = withContext(Dispatchers.IO) { Quic.fetch(name, LODLevel) }
+            Log.d("表示orLOD遅延", "${name} ダウンロード完了 優先度${LODLevel}のダウンロード完了 ${System.currentTimeMillis()}")
             val endTime = System.currentTimeMillis() // 処理終了時間を取得
-            val elapsedTime = endTime - startTime // 処理時間を計算
-            println("cancelTest: $name の処理時間 = $elapsedTime ms")
+
 
 //            var result = withContext(Dispatchers.IO) { Quic.httP2ArFetch(name, LODLevel) }
 //            Log.d("cancelTest", "${result.isComplete}")
@@ -187,7 +232,7 @@ fun ARSample() {
 //            val startTime = System.currentTimeMillis()
 //            var byteArray = Quic.httP2Fetch(name, "test")
 //            val endTime = System.currentTimeMillis() // 処理終了時間を取得
-//            val elapsedTime = endTime - startTime // 処理時間を計算
+            val elapsedTime = endTime - startTime // 処理時間を計算
 //            println("cancelTest: $name の処理時間 = $elapsedTime ms. データサイズ = ${byteArray.size}")
 
             if (result.isComplete){
@@ -195,6 +240,10 @@ fun ARSample() {
                 val buffer = ByteBuffer.wrap(byteArray)
 
                 cacheObject[name] = buffer
+//                Log.d("cancelTest", "${result.receiveData.size}")
+                val elapsedTime = endTime - startTime // 処理時間を計算
+//                Log.d("表示orLOD遅延", "$name の処理時間 = $elapsedTime ms")
+
                 nowDownloadingLods.remove(name) // 現在のダウンロードリストから削除
 //                Log.d(
 //                    "cancelTest",
@@ -203,7 +252,6 @@ fun ARSample() {
             }
 
             return result.isComplete
-//            return true
         }
 
         fun createAnchorNode(
@@ -238,6 +286,7 @@ fun ARSample() {
                     isEditable = true
                 }
                 (modelNode.childNodes.firstOrNull() as? RenderableNode)?.position = Position(0f, 0f, 0f)
+                (modelNode.childNodes.firstOrNull() as? RenderableNode)?.rotation = Rotation(180f, 90f, 90f)
                 anchorNode.addChildNode(modelNode)
 
 
@@ -346,6 +395,7 @@ fun ARSample() {
 
             val downloadTime = lod.estimateDownloadingTime
             val currentLOD = objectInfo.currentLOD
+//            Log.d("allLODList", "${objectInfo.lodLevelGroup[currentLOD - 1].sse},,,,${objectInfo.lodLevelGroup[selectedLOD.toInt() - 1].sse}")
             if (objectInfo.lodLevelGroup[currentLOD - 1].sse <= targetSSE || objectInfo.lodLevelGroup[currentLOD - 1].sse <= objectInfo.lodLevelGroup[selectedLOD.toInt() - 1].sse) {
                 return 0f
             }
@@ -429,8 +479,10 @@ fun ARSample() {
 
         // オブジェクトの優先度を取得
         fun getPriorityOfObject(markerString: String, distance: Float, objectPose: Pose): Long {
-            if (!isInFieldOfView(objectPose, false)) {
-                return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
+            if (experimental_type != 2) {
+                if (!isInFieldOfView(objectPose, false)) {
+                    return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
+                }
             }
 //            Log.d("distanceee", distance.toString())
 
@@ -462,7 +514,7 @@ fun ARSample() {
 //            Log.d("cancelTest", "${marker}: キャンセル関数")
             nowDownloadingLods.remove(marker) // 現在のダウンロードリストから削除
             Quic.cancelStream(marker) // ストリームをキャンセル
-            Log.d("cancelTest", "${marker}: 視野外だからストリーム削除。 $cacheObject $nowDownloadingLods")
+//            Log.d("cancelTest", "${marker}: 視野外だからストリーム削除。 $cacheObject $nowDownloadingLods")
         }
 
         fun httpCancelStream(marker: String) {
@@ -502,8 +554,14 @@ fun ARSample() {
             }
         }
 
+        var count = 0
         // フェッチするオブジェクトLODの決定
         fun lodSelection(updateObjectList: List<Int>) {
+            Log.d("選択間隔", "${System.currentTimeMillis()}")
+            Log.d("allLODList", "==========================================================================================================")
+            Log.d("allLODList", "update List: ${updateObjectList}")
+            count ++
+//            Log.d("allLODList", "${count}回目のlodselectionスタート")
             var movingAverage = getMovingAverage() // 直近5秒の移動平均を取得
             var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
             updateObjectList.forEachIndexed { index, id ->
@@ -512,7 +570,7 @@ fun ARSample() {
                 calculateDownloadingTimeOfLOD(movingAverage, objectInfoList[key]!!) // ダウンロード時間の推定
 
                 val priority = objectInfoList[key]?.priority // そのオブジェクトの優先度を取得
-//                Log.d("allLODList", "${key}'s priority is ${priority}")
+                Log.d("allLODList", "${key}'s priority is ${priority}, currentLOD = ${objectInfoList[key]!!.currentLOD}")
 
                 if (priority != 0L) {
                     if (objectInfoList[key]!!.currentLOD != 7) {
@@ -530,16 +588,25 @@ fun ARSample() {
                             allLODList.add(newFetchObjectInfo)
                         }
                     }
-                } else { // 視野外&ダウンロード中ならストリームのキャンセルとダウンロード中リストからの削除
+                }
+                else { // 視野外&ダウンロード中ならストリームのキャンセルとダウンロード中リストからの削除
                     if (nowDownloadingLods.containsKey(key)) {
                         // 70%ダウンロード完了してるならキャンセルしない
                         if (!Quic.isDownloadProgressReached(key, 70L, nowDownloadingLods[key]?.LODLevel?.level!!)) {
-                            Log.d("cancelTest", "${key}: 視野外キャンセル対象")
-                            cancelStream(key)
+//                            Log.d("cancelTest", "${key}: 視野外キャンセル対象")
+                            if (experimental_type == 4) {
+                                cancelStream(key)
+                                Log.d("allLODList", "${key}のLOD比較: ${objectInfoList["marker${index + 1}"]!!.currentLOD},,,,,${objectInfoList["marker${index + 1}"]!!.prevLOD}")
+                                objectInfoList["marker${index + 1}"]!!.currentLOD = objectInfoList["marker${index + 1}"]!!.prevLOD
 //                            httpCancelStream(key)
+                                cancel70Count ++
+                                Log.d("表示orLOD遅延", "${key} 70%キャンセル回数 = ${cancel70Count} ${System.currentTimeMillis()}")
+                            }
+                        } else {
+                            noCancel70Count ++
+                            Log.d("表示orLOD遅延", "${key} 70%以上非キャンセル回数 = ${noCancel70Count} ${System.currentTimeMillis()}")
                         }
                     }
-
                 }
             }
 
@@ -548,35 +615,52 @@ fun ARSample() {
 
             val objectsProcessed = mutableSetOf<Int>()
             var scheduledFetchLOD = mutableListOf<FetchObjectInfo>()
-//            Log.d("allLODList", "==========================================================================================================")
             sortedList.forEach {
 //                Log.d("allLODList", "${it}")
                 if (it.index in objectsProcessed) return@forEach // もうそのオブジェクトについては選択されてる場合スキップ
                 if (objectInfoList["marker${it.index + 1}"]!!.currentLOD >= it.LODLevel.level.toInt()) return@forEach // 現在のLODレベルの方が高い場合スキップ
                 // キャッシュに存在するならここでスキップ
                 if (it.value == 0f) return@forEach // valueが0の場合、それ以上今は上げる必要がないからスキップ
-                if (nowDownloadingLods.containsKey("marker${it.index + 1}")) cancelStream("marker${it.index + 1}") // 現在通信中ならキャンセルしてこの後新しく再リクエスト
+                if (nowDownloadingLods.containsKey("marker${it.index + 1}")) {
+                    if (nowDownloadingLods["marker${it.index + 1}"]?.level!! < it.level) {
+                        cancelStream("marker${it.index + 1}")
+                        updateLODCancel ++
+                        Log.d("表示orLOD遅延",  "marker${it.index + 1} LOD更新キャンセル = ${updateLODCancel} ${System.currentTimeMillis()}")
+                    } else if (nowDownloadingLods["marker${it.index + 1}"]?.level!! >= it.level) {
+                        return@forEach
+                    }
+                } // 現在通信中ならキャンセルしてこの後新しく再リクエスト
                 scheduledFetchLOD.add(it)
                 objectsProcessed.add(it.index)
+                objectInfoList["marker${it.index + 1}"]!!.prevLOD = objectInfoList["marker${it.index + 1}"]!!.currentLOD
             }
-//            Log.d("allLODList", "==========================================================================================================")
+            Log.d("allLODList", "$sortedList")
 
             scheduledFetchLOD.forEach {
                 GlobalScope.launch(Dispatchers.Main) {
                     val prevLevel = objectInfoList["marker${it.index + 1}"]!!.currentLOD
+                    Log.d("allLODList", "marker${it.index + 1}, level=${it.LODLevel.level}の処理")
+
                     objectInfoList["marker${it.index + 1}"]!!.currentLOD = it.LODLevel.level.toInt() // LODレベルの記録を更新
+                    objectNowLevelAndNextLevel[it.index]?.next = it.LODLevel.level
                     nowDownloadingLods["marker${it.index + 1}"] = it // ダウンロード中のLODのリストに追加
                     val isComplete = fetchObject("marker${it.index + 1}", it.LODLevel.level)
-                    if (!isComplete) objectInfoList["marker${it.index + 1}"]!!.currentLOD = prevLevel
+                    if (!isComplete) {
+//                        objectInfoList["marker${it.index + 1}"]!!.currentLOD = objectInfoList["marker${it.index + 1}"]!!.prevLOD
+//                        Log.d("wiwiwiwiwiw", "marker${it.index + 1}: ${objectInfoList["marker${it.index + 1}"]!!.currentLOD}")
+                    }
                 }
             }
+//            Log.d("allLODList", "スケジュール: $scheduledFetchLOD")
+//            Log.d("allLODList", "ダウンロード中: ${nowDownloadingLods}")
+//            Log.d("allLODList", "${count}回目のlodselection終了")
         }
 
 
         // 予想位置の範囲内にあるオブジェクトを取得
         fun getPositionOfPredictedObjects(cameraPose: Pose):  List<Int>{
             var predictedObjectKey = mutableListOf<Int>()
-            val allowableRange = 5.5f // 3m以内のものを抽出
+            val allowableRange = 5.5f // 5.5m以内のものを抽出
             val amountChangePredicted = Triple(
                 predictedPosition.first - lastPredictedPosition.first,
                 predictedPosition.second - lastPredictedPosition.second,
@@ -591,19 +675,95 @@ fun ARSample() {
                 val x = predictedCameraPosition.first - pose.tx()
                 val y = predictedCameraPosition.second - pose.ty()
                 val z = predictedCameraPosition.third - pose.tz()
+//                val x = cameraPose.tx() - pose.tx()
+//                val y = cameraPose.ty() - pose.ty()
+//                val z = cameraPose.tz() - pose.tz()
+
                 val distance = sqrt(x * x + y * y + z * z)
                 val markerString = "marker${index + 1}"
                 objectInfoList[markerString]?.distance = distance
-                // 視野内なら通常処理
+
+                // 範囲内なら通常処理
                 if (distance <= allowableRange) {
                     val priority = getPriorityOfObject(markerString, distance, pose)
+
                     objectInfoList[markerString]?.priority = priority
-//                    val objectInfo = PredictedObjectInfo(markerString, pose, priority)
+
+//                    if (priority > 0) {
                     predictedObjectKey.add(index)
+//                    }
+//                    else if (priority == 0L && !isInFieldOfView(pose, true)) { // 優先度が0で現在視野外で
+//                        if (nowDownloadingLods.containsKey(markerString)) { // 現在ダウロード中で
+//                            // 70%ダウンロード完了してるならキャンセルしない
+//                            if (!Quic.isDownloadProgressReached(markerString, 70L, nowDownloadingLods[markerString]?.LODLevel?.level!!)) {
+//                                Log.d("cancelTest", "${markerString}: 視野外キャンセル対象")
+//                                if (experimental_type == 4) {
+//                                    cancelStream(markerString)
+////                                    httpCancelStream(key)
+//                                }
+//                            }
+//                        }
+//                    }
                 }
             }
 
             return predictedObjectKey
+        }
+
+        fun getNowPriorityOfObject(markerString: String, distance: Float, objectPose: Pose): Long {
+            if (experimental_type != 2) {
+                if (!isInFieldOfView(objectPose, true)) {
+                    return 0 // 視野外のオブジェクトは優先度0（フェッチしない）
+                }
+            }
+//            Log.d("distanceee", distance.toString())
+
+            if (distance < 1.2) {
+                val priority = 7L
+                return priority
+            } else if (distance < 2.0) {
+                val priority = 6L
+                return priority
+            } else if (distance < 2.8) {
+                val priority = 5L
+                return priority
+            } else if (distance < 3.6) {
+                val priority = 4L
+                return priority
+            } else if (distance < 4.4) {
+                val priority = 3L
+                return priority
+            } else if (distance < 5.2) {
+                val priority = 2L
+                return priority
+            } else {
+                val priority = 1L
+                return priority
+            }
+        }
+
+        // 現在の範囲内にあるオブジェクトを取得
+        fun getPositionOfNowwwwwwObjects(cameraPose: Pose): List<Int> {
+            var objectKeys = mutableListOf<Int>()
+            val allowableRange = 5.5f // 5.5m以内のものを抽出
+            poses.forEachIndexed { index, pose ->
+                val x = cameraPose.tx() - pose.tx()
+                val y = cameraPose.ty() - pose.ty()
+                val z = cameraPose.tz() - pose.tz()
+
+                val distance = sqrt(x * x + y * y + z * z)
+                val markerString = "marker${index + 1}"
+                objectInfoListForMeasure[markerString]?.distance = distance
+                // 範囲内なら処理
+                if (distance <= allowableRange) {
+                    val priority = getNowPriorityOfObject(markerString, distance, pose)
+
+                    objectInfoListForMeasure[markerString]?.priority = priority
+                    objectKeys.add(index)
+                }
+            }
+
+            return objectKeys
         }
 
         fun normalizeAngle(angle: Float): Float {
@@ -617,9 +777,12 @@ fun ARSample() {
         // Timer()のインスタンス生成
         val predictionTimer = Timer()
         val predictionTask = timerTask {
+            val startTime = System.currentTimeMillis()
             val localCameraPose = globalCameraPose ?: return@timerTask
 
-            val t = 2.0 // 2秒後の位置を予測
+            Log.d("位置トラッキング", "カメラ: ${localCameraPose.tx()} ${localCameraPose.ty()} ${localCameraPose.tz()}) 2m前方: ${currentPosition.first} ${currentPosition.second} ${currentPosition.third}")
+
+            val t = 0.6 // 0.3秒後の位置を予測
             // 位置の速度と加速度を計算
             var positionSpeed = Triple(
                 (currentPosition.first - lastPosition.first) / t,
@@ -665,6 +828,8 @@ fun ARSample() {
             lodSelection(updatedObjectList) // 視野内LODのアップデート
 
             lastPredictedPosition = predictedPosition
+            val endTime = System.currentTimeMillis()
+            Log.d("間隔時間", "${endTime - startTime}")
         }
 
         // scheduleAtFixedRateメソッドの引数
@@ -675,6 +840,7 @@ fun ARSample() {
 
         // 特定の条件が変更された時に一度だけ実行する関数
         LaunchedEffect(planeDetected) {
+
             // 各Quic.fetchを非同期で実行
             if (planeDetected && session != null) {
                 startTime = System.currentTimeMillis()
@@ -698,20 +864,21 @@ fun ARSample() {
                 coroutineScope {
                     launch {
 //                        poses = createCancelTestPoses(globalCameraPose!!)
+//                        poses = slideTest(globalCameraPose!!)
                         poses = createAllPoses(globalCameraPose!!)
-                        Log.d("qposeSizse", poses.size.toString())
+//                        poses = createOneObject(globalCameraPose!!)
+//                        poses = latencyObject(globalCameraPose!!)
+//                        Log.d("qposeSizse", poses.size.toString())
 
                         poses.forEachIndexed { index, pose ->
                             launch {
+                                objectNowLevelAndNextLevel[index] = NowAndNextLevel(1, 0)
                                 // 新しく追加したオブジェクトのインデックスを記録する
                                 objectInfoList["marker${index + 1}"] = ObjectInfo()
-//                                Log.d("initial fetch", "${isInFieldOfView(pose, true)}")
+                                objectInfoListForMeasure["marker${index + 1}"] = ObjectInfo()
                                 if (isInFieldOfView(pose, true)) {
-//                                if (true) {
-                                    val prevLevel =
-                                        objectInfoList["marker${index + 1}"]!!.currentLOD
-                                    objectInfoList["marker${index + 1}"]!!.currentLOD =
-                                        1 // LODレベルの記録を更新
+                                    val prevLevel = objectInfoList["marker${index + 1}"]!!.currentLOD
+                                    objectInfoList["marker${index + 1}"]!!.currentLOD = 1 // LODレベルの記録を更新
                                     nowDownloadingLods["marker${index + 1}"] = FetchObjectInfo(
                                         index,
                                         1,
@@ -719,8 +886,11 @@ fun ARSample() {
                                         objectInfoList["marker${index + 1}"]!!.lodLevelGroup[0]
                                     ) // ダウンロード中のLODのリストに追加
                                     val isComplete = fetchObject("marker${index + 1}", 1)
-                                    if (!isComplete) objectInfoList["marker${index + 1}"]!!.currentLOD =
-                                        prevLevel
+                                    if (!isComplete) {
+                                        objectInfoList["marker${index + 1}"]!!.currentLOD = prevLevel
+                                    } else {
+                                        objectNowLevelAndNextLevel[index]?.next = 1
+                                    }
 //                                    Log.d("cancelTest", "${"marker${index + 1}"}: 初期fetch")
                                 }
                             }
@@ -734,6 +904,71 @@ fun ARSample() {
                 isInitialized = true
             }
         }
+
+        fun calculateDownloadingTimeOfLODForMeasure(movingAverage: Float, objectInfo: ObjectInfo) {
+            objectInfo.lodLevelGroup.forEach {
+                if (movingAverage == 0f) {
+                    it.estimateDownloadingTime = 0f
+                } else {
+                    it.estimateDownloadingTime = it.fileSize / movingAverage
+                }
+            }
+        }
+
+        fun nowLodSelection(objectList: List<Int>, nowTime: Long): List<FetchObjectInfo> {
+            var movingAverage = getMovingAverage() // 直近5秒の移動平均を取得
+            var allLODList = mutableListOf<FetchObjectInfo>() // オブジェクトIDとpriority * utilityのマップ
+            objectList.forEachIndexed { index, id ->
+                val key = "marker${id + 1}"
+                calculateDownloadingTimeOfLODForMeasure(movingAverage, objectInfoListForMeasure[key]!!) // ダウンロード時間の推定
+
+                val priority = objectInfoListForMeasure[key]?.priority // そのオブジェクトの優先度を取得
+
+                if (priority != 0L) {
+                    for (i in 0 .. 6) { // 各LODのSSEを計算
+                        objectInfoListForMeasure[key]!!.lodLevelGroup[i].sse = calculateSSE(objectInfoListForMeasure[key]!!.distance, objectInfoListForMeasure[key]!!.lodLevelGroup[i].geometricError)
+                    }
+                    for (i in objectInfoListForMeasure[key]!!.currentLOD..7) { // priority * utilityを計算
+                        val value = calculateUtility(objectInfoListForMeasure[key]!!, i.toLong()) * priority!!
+                        val newFetchObjectInfo = FetchObjectInfo(
+                            index,
+                            i.toLong(),
+                            value,
+                            objectInfoListForMeasure[key]!!.lodLevelGroup[i - 1]
+                        )
+                        allLODList.add(newFetchObjectInfo)
+                    }
+                    if (!previousVisibilityMap[key]!!) {
+                        previousVisibilityMap[key] = true // 今回初めて必要になったならtureにする
+                        insightTimeMap[key] = nowTime // 時間を記録
+//                        Log.d("表示orLOD遅延", "${key} 視界内 ${nowTime}")
+                    }
+                } else { // priority = 0は視界外
+                    if (previousVisibilityMap[key]!!) { // 前回まで視野内だったなら初期化
+                        previousVisibilityMap[key] = false
+                        insightTimeMap[key] = 0
+//                        Log.d("表示orLOD遅延", "${key} 視界外 ${nowTime}")
+                    }
+                }
+            }
+
+            // priority * utilityでソート
+            val sortedList = allLODList.sortedByDescending { it.value }
+
+            val objectsProcessed = mutableSetOf<Int>()
+            var scheduledFetchLOD = mutableListOf<FetchObjectInfo>()
+            sortedList.forEach {
+                if (it.index in objectsProcessed) return@forEach // もうそのオブジェクトについては選択されてる場合スキップ
+//                if (objectInfoListForMeasure["marker${it.index + 1}"]!!.currentLOD >= it.LODLevel.level.toInt()) return@forEach // 本物の方での現在のLODの方が高かったらスキップ
+//                if (it.value == 0f) return@forEach // valueが0の場合、それ以上今は上げる必要がないからスキップ
+                scheduledFetchLOD.add(it)
+                objectsProcessed.add(it.index)
+            }
+
+            return scheduledFetchLOD
+        }
+
+        var frameCount = 0
 
         ARScene(
             modifier = Modifier.fillMaxSize(),
@@ -758,6 +993,8 @@ fun ARSample() {
                 trackingFailureReason = it
             },
             onSessionUpdated = { updatedSession, updatedFrame ->  // ARCoreシステムの状態の更新。
+                frameCount ++
+//                Log.d("frame count", "${frameCount}")
                 if (childNodes.isEmpty()) {
                     // 平面が検出されたらplaneDetectedをtrueにして、LaunchedEffect内の処理を実行
                     if (updatedFrame.getUpdatedPlanes()
@@ -772,7 +1009,6 @@ fun ARSample() {
                 }
 
                 if (!isInitialized) {
-                    Log.d("sdfsdf", "sdfsdf")
                     session = updatedSession
                     planeDetected = true
                 }
@@ -783,6 +1019,17 @@ fun ARSample() {
 
                 // 各オブジェクトとの距離を計算
                 if (planeDetected) {
+                    val nowTime = System.currentTimeMillis()
+
+                    // 現在の視界でのLODを計算
+                    var nowLodList = nowLodSelection(getPositionOfNowwwwwwObjects(cameraPose), nowTime)
+
+//                    val updatedObjectList = getPositionOfPredictedObjects(cameraPose) // 予測更新対象の取得
+//
+//                    lodSelection(updatedObjectList) // 視野内LODのアップデート
+
+                    lastPredictedPosition = predictedPosition
+
                     poses.forEachIndexed{ index, pose ->
                         val key = "marker${index + 1}"
                         try {
@@ -791,30 +1038,67 @@ fun ARSample() {
                             val z = cameraPose.tz() - pose.tz()
                             val distance = sqrt(x * x + y * y + z * z)
                             objectInfoList[key]?.distance = distance
+                            objectInfoListForMeasure[key]?.distance = distance
 
                             // オブジェクトが現在の視界に入った時の処理
                             if (isInFieldOfView(pose, true)) {
+
                                 // キャッシュにこのマーカーのバッファーがあるか確認, あったら表示
                                 if (cacheObject.containsKey(key) and (cacheObject[key] != null)) {
                                     // 表示処理
-//                                    Log.d("cancelTest", "${key}: このフレームで視野内。")
-//                                    Log.d("elapse time", "表示")
                                     displayObject(key, childNodes, engine, modelLoader, materialLoader, index, pose, session, cacheObject[key]!!)
-                                    if (childNodes.size == 1) {
-                                        endTime = System.currentTimeMillis()
-                                        val elapseTime = endTime - startTime
-//                                        Log.d("cancelTest", "${elapseTime}")
-                                    }
                                     cacheObject.remove(key) // 表示したらキャッシュ削除
-//                                    Log.d("cancelTest", "${key}: 表示したのでキャッシュから削除。 $cacheObject")
+
+                                    if (objectInfoList[key]?.showed!!) { // すでに表示されてるオブジェクト
+                                        Log.d("表示orLOD遅延", "${key} LOD遅延 レベル${objectInfoList[key]?.currentLOD!!} ${nowTime - insightTimeMap[key]!!} 現在=${nowTime} 前=${insightTimeMap[key]!!}")
+                                    } else { // まだ表示されてなかったオブジェクト
+                                        Log.d("表示orLOD遅延", "${key} 表示遅延 レベル${objectInfoList[key]?.currentLOD!!} ${nowTime - insightTimeMap[key]!!} 現在=${nowTime} 前=${insightTimeMap[key]!!}")
+                                    }
+
+                                    insightTimeMap[key] = nowTime // 表示した時間に変更
+
+                                    objectInfoList[key]?.showed = true // 表示したからtrueにする
+                                    objectInfoListForMeasure[key]?.currentLOD = objectInfoList[key]?.currentLOD!! // 表示されたら計測用のLOD計算はこれを基準にする
+                                    Log.d("表示時間計測", "${key} 表示 優先度${objectInfoList[key]?.currentLOD!!} ${System.currentTimeMillis()}")
                                 }
                             }
-
                         } catch (e: Exception) {
                             Log.e("ARSample", "Error processing node for $key: ${e.message}")
                         }
-                        //Log.d("distances", objectInfo.toString())
                     }
+
+                    var isLODMiss = false
+                    var isShowMiss = false
+                    if (nowLodList.isNotEmpty()) {
+                        nowLodList.forEach {
+                            val key = "marker${it.index + 1}"
+                            // 表示済みのやつでLODが違かったら
+                            if (objectInfoListForMeasure[key]?.currentLOD!! < it.level.toInt() && objectInfoList[key]?.showed == true) {
+                                Log.d("キャッシュ計測", "${key}のキャッシュミス: 現在のLOD = ${objectInfoListForMeasure[key]?.currentLOD}, 現在視点でのLOD = ${it.level}")
+                                Log.d("表示時間計測", "${key} LODミス 優先度${it.level}が欲しかったけど優先度${objectInfoListForMeasure[key]?.currentLOD}だったからミス ${System.currentTimeMillis()}")
+                                isLODMiss = true
+                                cacheFailedTotal ++
+                            }
+
+                            // 表示されていなかったら
+                            if (objectInfoList[key]?.showed == false) {
+                                Log.d("キャッシュ計測", "${key}のキャッシュミス: 見えてないよ,,,,, 現在のLOD = ${objectInfoListForMeasure[key]?.currentLOD}, 現在視点でのLOD = ${it.level}")
+                                Log.d("表示時間計測", "${key} 表示ミス 優先度${it.level}が欲しかったけど優先度${objectInfoListForMeasure[key]?.currentLOD}だったからミス ${System.currentTimeMillis()}")
+                                isShowMiss = true
+                                cacheShowMiss ++
+                            }
+
+                            cacheTotal ++
+                        }
+                    }
+
+                    if (isLODMiss) {
+                        totalLODMissFrame ++
+                    } else if (isShowMiss) {
+                        totalShowMissFrame ++
+                    }
+                    totalFrame ++
+                    Log.d("キャッシュ計測", "フレーム = ${totalFrame}, LODミスフレーム = ${totalLODMissFrame}, 表示ミスフレーム = ${totalShowMissFrame}, トータルオブジェクト = ${cacheTotal}, LODミス = ${cacheFailedTotal}, 表示ミス = ${cacheShowMiss}")
                 }
 
                 val fixedDistance = 2f
@@ -877,26 +1161,13 @@ fun ARSample() {
                         predictedPosition.third
                     )
                 }
+
+                Log.d("最終LODレベル計測", "=================================")
+                objectInfoList.forEach { s, objectInfo ->
+                    Log.d("最終LODレベル計測", "$s: ${objectInfo.currentLOD}")
+                }
+                Log.d("最終LODレベル計測", "=================================")
             }
         )
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 32.dp)
-                .padding(16.dp)
-        ) {
-            poses.forEachIndexed { index, pose ->
-                val key = "marker${index + 1}"
-                val priority = objectInfoList[key]?.priority
-                Text(
-                    text = "key${index + 1}: ${priority}",
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
-        }
-
     }
 }

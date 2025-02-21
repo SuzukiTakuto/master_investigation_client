@@ -17,7 +17,9 @@ data class ObjectInfo(
     var indexOfChildNodes: Int = -1,
     var currentLOD: Int = 1,
     var lodLevelGroup: List<LODLevel> = lodLevelGroup1,
-    var modelNode: ModelNode? = null
+    var modelNode: ModelNode? = null,
+    var prevLOD: Int = 1,
+    var showed: Boolean = false
 )
 
 val lodLevelGroup1: List<LODLevel> = listOf(
@@ -27,7 +29,7 @@ val lodLevelGroup1: List<LODLevel> = listOf(
     LODLevel(4, 0.021623002.toFloat(), 810875, 0.38263893f, 100f, false),
     LODLevel(5, 0.017669708.toFloat(), 915269, 0.43190074f, 100f, false),
     LODLevel(6, 0.013755348.toFloat(), 1077972, 0.50867766f, 100f, false),
-    LODLevel(7, 0f, 3122008, 1.4732255f, 100f, false)
+    LODLevel(7, 0f, 2382729, 1.4732255f, 100f, false)
 )
 
 val lodLevelGroup2: List<LODLevel> = listOf(
